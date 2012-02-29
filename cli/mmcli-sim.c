@@ -161,14 +161,18 @@ print_sim_info (MMSim *sim)
     g_print ("SIM '%s'\n",
              mm_sim_get_path (sim));
     g_print ("  -------------------------\n"
-             "  Properties |          imsi : '%s'\n"
-             "             |            id : '%s'\n"
-             "             |   operator id : '%s'\n"
-             "             | operator name : '%s'\n",
+             "  Properties |                 imsi : '%s'\n"
+             "             |                   id : '%s'\n"
+             "             |          operator id : '%s'\n"
+             "             |        operator name : '%s'\n"
+             "             |    show PLMN at home : %s\n"
+             "             | show op name roaming : %s\n",
              VALIDATE (mm_sim_get_imsi (sim)),
              VALIDATE (mm_sim_get_identifier (sim)),
              VALIDATE (mm_sim_get_operator_identifier (sim)),
-             VALIDATE (mm_sim_get_operator_name (sim)));
+             VALIDATE (mm_sim_get_operator_name (sim)),
+             mm_sim_get_display_registered_network_name_at_home (sim) ? "yes" : "no",
+             mm_sim_get_display_operator_name_while_roaming (sim) ? "yes" : "no");
 }
 
 static void

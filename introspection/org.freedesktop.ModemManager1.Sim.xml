@@ -99,5 +99,22 @@
     -->
     <property name="OperatorName" type="s" access="read" />
 
+    <!--
+       DisplayRegisteredNetworkNameAtHome
+
+       If true, the user interface is required to display the name of
+       the registered PLMN while registered on a home network (non-roaming).
+    -->
+    <property name="DisplayRegisteredNetworkNameAtHome" type="b" access="read" />
+
+    <!--
+       DisplayOperatorNameWhileRoaming
+
+       If true, the user interface is required to display the operator
+       name from the SIM (the OperatorName) when registered on a
+       non-home network (roaming).
+    -->
+    <property name="DisplayOperatorNameWhileRoaming" type="b" access="read" />
+
   </interface>
 </node>

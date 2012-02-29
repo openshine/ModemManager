@@ -81,6 +81,8 @@ struct _MMSimClass {
                                  gpointer user_data);
     gchar * (* load_operator_name_finish) (MMSim *self,
                                            GAsyncResult *res,
+                                           gboolean *home_display,
+                                           gboolean *roam_display,
                                            GError **error);
 
     /* Change PIN (async) */

@@ -207,6 +207,36 @@ mm_sim_dup_operator_name (MMSim *self)
 }
 
 /**
+ * mm_sim_get_display_registered_network_name_at_home:
+ * @self: A #MMSim.
+ *
+ * Returns: %TRUE if the name of the registered network must be
+ * displayed while registered on a home network, %FALSE otherwide.
+ */
+gboolean
+mm_sim_get_display_registered_network_name_at_home (MMSim *self)
+{
+    g_return_val_if_fail (MM_GDBUS_IS_SIM (self), FALSE);
+
+    return mm_gdbus_sim_get_display_registered_network_name_at_home (self);
+}
+
+/**
+ * mm_sim_get_display_operator_name_while_roaming:
+ * @self: A #MMSim.
+ *
+ * Returns: %TRUE if the operator name from the SIM must be displayed
+ * while registered on a non-home network, %FALSE otherwide.
+ */
+gboolean
+mm_sim_get_display_operator_name_while_roaming (MMSim *self)
+{
+    g_return_val_if_fail (MM_GDBUS_IS_SIM (self), FALSE);
+
+    return mm_gdbus_sim_get_display_operator_name_while_roaming (self);
+}
+
+/**
  * mm_sim_send_pin:
  * @self: A #MMSim.
  * @pin: The PIN code.

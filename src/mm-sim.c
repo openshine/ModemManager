@@ -1239,6 +1239,8 @@ load_operator_identifier (MMSim *self,
 
 static gchar *
 parse_spn (const gchar *response,
+           gboolean *display_reg_home,
+           gboolean *display_op_roaming,
            GError **error)
 {
     gint sw1;
@@ -1295,7 +1297,16 @@ parse_spn (const gchar *response,
         while (buflen > 1 && bin[buflen - 1] == (char)0xff)
             buflen--;
 
-        /* First byte is metadata; remainder is GSM-7 unpacked into octets; convert to UTF8 */
+        /* Bits in the first byte specify rules for name display */
+        if (bin[0] == '\xFF' && bin[1] == '\xFF') {
+            /* If we got all-FF, don't enable display */
+            *display_reg_home = FALSE;
+            *display_op_roaming = FALSE;
+        } else {
+            *display_reg_home = ((bin[0] & 1) == 1);
+            *display_op_roaming = ((bin[0] & 2) == 2);
+        }
+        /* Remainder is GSM-7 unpacked into octets; convert to UTF8 */
         utf8 = (gchar *)mm_charset_gsm_unpacked_to_utf8 ((guint8 *)bin + 1, buflen - 1);
         g_free (bin);
         return utf8;
@@ -1312,6 +1323,8 @@ parse_spn (const gchar *response,
 static gchar *
 load_operator_name_finish (MMSim *self,
                            GAsyncResult *res,
+                           gboolean *display_reg_home,
+                           gboolean *display_op_roaming,
                            GError **error)
 {
     const gchar *result;
@@ -1320,7 +1333,7 @@ load_operator_name_finish (MMSim *self,
         return NULL;
     result = g_simple_async_result_get_op_res_gpointer (G_SIMPLE_ASYNC_RESULT (res));
 
-    return parse_spn (result, error);
+    return parse_spn (result, display_reg_home, display_op_roaming, error);
 }
 
 STR_REPLY_READY_FN (load_operator_name)
@@ -1440,6 +1453,37 @@ load_sim_identifier_ready (MMSim *self,
     interface_initialization_step (ctx);
 }
 
+static void
+load_operator_name_ready (MMSim *self,
+                          GAsyncResult *res,
+                          InitAsyncContext *ctx)
+{
+    GError *error = NULL;
+    gchar *val;
+    gboolean home, roaming;
+
+    val = MM_SIM_GET_CLASS (ctx->self)->load_operator_name_finish (self,
+                                                                   res,
+                                                                   &home,
+                                                                   &roaming,
+                                                                   &error);
+    mm_gdbus_sim_set_operator_name (MM_GDBUS_SIM (self), val);
+    mm_gdbus_sim_set_display_registered_network_name_at_home (MM_GDBUS_SIM (self),
+                                                              home);
+    mm_gdbus_sim_set_display_operator_name_while_roaming (MM_GDBUS_SIM (self),
+                                                          roaming);
+    g_free (val);
+
+    if (error) {
+        mm_warn ("couldn't load operator name: '%s'", error->message);
+        g_error_free (error);
+    }
+
+    /* Go on to next step */
+    ctx->step++;
+    interface_initialization_step (ctx);
+}
+
 #undef STR_REPLY_READY_FN
 #define STR_REPLY_READY_FN(NAME,DISPLAY)                                \
     static void                                                         \
@@ -1466,7 +1510,6 @@ load_sim_identifier_ready (MMSim *self,
 
 STR_REPLY_READY_FN (imsi, "IMSI")
 STR_REPLY_READY_FN (operator_identifier, "Operator identifier")
-STR_REPLY_READY_FN (operator_name, "Operator name")
 
 static void
 interface_initialization_step (InitAsyncContext *ctx)

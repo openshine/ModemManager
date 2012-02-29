@@ -38,6 +38,8 @@ const gchar *mm_sim_get_identifier          (MMSim *self);
 const gchar *mm_sim_get_imsi                (MMSim *self);
 const gchar *mm_sim_get_operator_identifier (MMSim *self);
 const gchar *mm_sim_get_operator_name       (MMSim *self);
+gboolean mm_sim_get_display_registered_network_name_at_home (MMSim *self);
+gboolean mm_sim_get_display_operator_name_while_roaming     (MMSim *self);
 
 gchar *mm_sim_dup_path                (MMSim *self);
 gchar *mm_sim_dup_identifier          (MMSim *self);
