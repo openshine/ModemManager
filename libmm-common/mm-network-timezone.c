@@ -103,19 +103,19 @@ mm_network_timezone_get_dictionary (MMNetworkTimezone *self)
         g_variant_builder_add (&builder,
                                "{sv}",
                                "offset",
-                               g_variant_new_uint32 (self->priv->offset));
+                               g_variant_new_int32 (self->priv->offset));
 
     if (self->priv->dst_offset != MM_NETWORK_TIMEZONE_OFFSET_UNKNOWN)
         g_variant_builder_add (&builder,
                                "{sv}",
                                "dst-offset",
-                               g_variant_new_uint32 (self->priv->dst_offset));
+                               g_variant_new_int32 (self->priv->dst_offset));
 
     if (self->priv->leap_seconds != MM_NETWORK_TIMEZONE_LEAP_SECONDS_UNKNOWN)
         g_variant_builder_add (&builder,
                                "{sv}",
                                "leap-seconds",
-                               g_variant_new_uint32 (self->priv->leap_seconds));
+                               g_variant_new_int32 (self->priv->leap_seconds));
 
     return g_variant_ref_sink (g_variant_builder_end (&builder));
 }
