@@ -130,24 +130,25 @@ get_network_time_process_reply (gchar *time_string,
     gchar *dst_offset = NULL;
     gchar *leap_seconds = NULL;
 
-    if (error) {
+    if (error)
         g_printerr ("error: couldn't get current network time: '%s'\n",
                     error->message);
-    }
 
     /* Not the best thing to do, as we may be doing _get() calls twice, but
      * easiest to maintain */
 #undef VALIDATE
 #define VALIDATE(str) (str ? str : "not available")
 
-    if (mm_network_timezone_get_offset (timezone) != MM_NETWORK_TIMEZONE_OFFSET_UNKNOWN)
-        offset = g_strdup_printf ("%" G_GINT32_FORMAT, mm_network_timezone_get_offset (timezone));
+    if (timezone) {
+        if (mm_network_timezone_get_offset (timezone) != MM_NETWORK_TIMEZONE_OFFSET_UNKNOWN)
+            offset = g_strdup_printf ("%" G_GINT32_FORMAT, mm_network_timezone_get_offset (timezone));
 
-    if (mm_network_timezone_get_dst_offset (timezone) != MM_NETWORK_TIMEZONE_OFFSET_UNKNOWN)
-        dst_offset = g_strdup_printf ("%" G_GINT32_FORMAT,mm_network_timezone_get_dst_offset (timezone));
+        if (mm_network_timezone_get_dst_offset (timezone) != MM_NETWORK_TIMEZONE_OFFSET_UNKNOWN)
+            dst_offset = g_strdup_printf ("%" G_GINT32_FORMAT, mm_network_timezone_get_dst_offset (timezone));
 
-    if (mm_network_timezone_get_leap_seconds (timezone) != MM_NETWORK_TIMEZONE_LEAP_SECONDS_UNKNOWN)
-        leap_seconds = g_strdup_printf ("%" G_GINT32_FORMAT,mm_network_timezone_get_leap_seconds (timezone));
+        if (mm_network_timezone_get_leap_seconds (timezone) != MM_NETWORK_TIMEZONE_LEAP_SECONDS_UNKNOWN)
+            leap_seconds = g_strdup_printf ("%" G_GINT32_FORMAT, mm_network_timezone_get_leap_seconds (timezone));
+    }
 
     g_print ("\n"
              "%s\n"
