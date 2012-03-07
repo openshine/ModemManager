@@ -68,6 +68,7 @@ static guint signals[LAST_SIGNAL] = { 0 };
 
 typedef struct {
     guint32 open_count;
+    gboolean forced_close;
     int fd;
     GHashTable *reply_cache;
     GIOChannel *channel;
@@ -952,6 +953,12 @@ mm_serial_port_close (MMSerialPort *self)
     g_return_if_fail (MM_IS_SERIAL_PORT (self));
 
     priv = MM_SERIAL_PORT_GET_PRIVATE (self);
+
+    /* If we forced closing the port, open_count will be 0 already.
+     * Just return without issuing any warning */
+    if (priv->forced_close)
+        return;
+
     g_return_if_fail (priv->open_count > 0);
 
     device = mm_port_get_device (MM_PORT (self));
@@ -1062,6 +1069,10 @@ mm_serial_port_close_force (MMSerialPort *self)
     /* Force the port to close */
     priv->open_count = 1;
     mm_serial_port_close (self);
+
+    /* Mark as having forced the close, so that we don't warn about incorrect
+     * open counts */
+    priv->forced_close = TRUE;
 }
 
 static void
@@ -1640,4 +1651,3 @@ mm_serial_port_class_init (MMSerialPortClass *klass)
                       g_cclosure_marshal_VOID__UINT,
 					  G_TYPE_NONE, 1, G_TYPE_UINT);
 }
-
