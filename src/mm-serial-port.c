@@ -35,6 +35,7 @@
 #include "mm-log.h"
 
 static gboolean mm_serial_port_queue_process (gpointer data);
+static void mm_serial_port_close_force (MMSerialPort *self);
 
 G_DEFINE_TYPE (MMSerialPort, mm_serial_port, MM_TYPE_PORT)
 
@@ -1055,7 +1056,7 @@ mm_serial_port_close (MMSerialPort *self)
     g_clear_object (&priv->cancellable);
 }
 
-void
+static void
 mm_serial_port_close_force (MMSerialPort *self)
 {
     MMSerialPortPrivate *priv;
@@ -1064,7 +1065,10 @@ mm_serial_port_close_force (MMSerialPort *self)
     g_return_if_fail (MM_IS_SERIAL_PORT (self));
 
     priv = MM_SERIAL_PORT_GET_PRIVATE (self);
-    g_return_if_fail (priv->open_count > 0);
+
+    /* If already closed, done */
+    if (!priv->open_count)
+        return;
 
     /* Force the port to close */
     priv->open_count = 1;
@@ -1521,8 +1525,7 @@ dispose (GObject *object)
         priv->timeout_id = 0;
     }
 
-    if (mm_serial_port_is_open (MM_SERIAL_PORT (object)))
-        mm_serial_port_close_force (MM_SERIAL_PORT (object));
+    mm_serial_port_close_force (MM_SERIAL_PORT (object));
 
     mm_serial_port_flash_cancel (MM_SERIAL_PORT (object));
 
