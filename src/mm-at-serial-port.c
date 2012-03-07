@@ -270,6 +270,7 @@ void
 mm_at_serial_port_queue_command (MMAtSerialPort *self,
                                  const char *command,
                                  guint32 timeout_seconds,
+                                 GCancellable *cancellable,
                                  MMAtSerialResponseFn callback,
                                  gpointer user_data)
 {
@@ -286,7 +287,7 @@ mm_at_serial_port_queue_command (MMAtSerialPort *self,
                                   buf,
                                   TRUE,
                                   timeout_seconds,
-                                  NULL,
+                                  cancellable,
                                   (MMSerialResponseFn) callback,
                                   user_data);
 }
@@ -295,6 +296,7 @@ void
 mm_at_serial_port_queue_command_cached (MMAtSerialPort *self,
                                         const char *command,
                                         guint32 timeout_seconds,
+                                        GCancellable *cancellable,
                                         MMAtSerialResponseFn callback,
                                         gpointer user_data)
 {
@@ -311,7 +313,7 @@ mm_at_serial_port_queue_command_cached (MMAtSerialPort *self,
                                          buf,
                                          TRUE,
                                          timeout_seconds,
-                                         NULL,
+                                         cancellable,
                                          (MMSerialResponseFn) callback,
                                          user_data);
 }
