@@ -286,6 +286,7 @@ mm_at_serial_port_queue_command (MMAtSerialPort *self,
                                   buf,
                                   TRUE,
                                   timeout_seconds,
+                                  NULL,
                                   (MMSerialResponseFn) callback,
                                   user_data);
 }
@@ -310,6 +311,7 @@ mm_at_serial_port_queue_command_cached (MMAtSerialPort *self,
                                          buf,
                                          TRUE,
                                          timeout_seconds,
+                                         NULL,
                                          (MMSerialResponseFn) callback,
                                          user_data);
 }
