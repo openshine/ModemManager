@@ -38,6 +38,8 @@ const gchar *mm_sim_get_identifier          (MMSim *self);
 const gchar *mm_sim_get_imsi                (MMSim *self);
 const gchar *mm_sim_get_operator_identifier (MMSim *self);
 const gchar *mm_sim_get_operator_name       (MMSim *self);
+const gchar * const *mm_sim_get_spdi        (MMSim *self);
+
 gboolean mm_sim_get_display_registered_network_name_at_home (MMSim *self);
 gboolean mm_sim_get_display_operator_name_while_roaming     (MMSim *self);
 
@@ -46,6 +48,7 @@ gchar *mm_sim_dup_identifier          (MMSim *self);
 gchar *mm_sim_dup_imsi                (MMSim *self);
 gchar *mm_sim_dup_operator_identifier (MMSim *self);
 gchar *mm_sim_dup_operator_name       (MMSim *self);
+gchar **mm_sim_dup_spdi               (MMSim *self);
 
 void     mm_sim_send_pin        (MMSim *self,
                                  const gchar *pin,

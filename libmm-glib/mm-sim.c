@@ -207,6 +207,40 @@ mm_sim_dup_operator_name (MMSim *self)
 }
 
 /**
+ * mm_sim_get_spdi:
+ * @self: A #MMSim.
+ *
+ * Gets the SPDI list of the #MMSim object.
+ *
+ * <warning>It is only safe to use this function on the thread where @self was constructed. Use mm_sim_dup_spdi() if on another thread.</warning>
+ *
+ * Returns: (transfer none): The SPDI list of the #MMSim object, or %NULL if it couldn't be retrieved.
+ */
+const gchar * const *
+mm_sim_get_spdi (MMSim *self)
+{
+    g_return_val_if_fail (MM_GDBUS_IS_SIM (self), NULL);
+
+    return mm_gdbus_sim_get_spdi (self);
+}
+
+/**
+ * mm_sim_dup_spdi:
+ * @self: A #MMSim.
+ *
+ * Gets a copy of the SPDI list of the #MMSim object.
+ *
+ * Returns: (transfer full): The SPDI of the #MMSim object, or %NULL if it couldn't be retrieved. The returned value should be freed with g_strfreev().
+ */
+gchar **
+mm_sim_dup_spdi (MMSim *self)
+{
+    g_return_val_if_fail (MM_GDBUS_IS_SIM (self), NULL);
+
+    return mm_gdbus_sim_dup_spdi (self);
+}
+
+/**
  * mm_sim_get_display_registered_network_name_at_home:
  * @self: A #MMSim.
  *

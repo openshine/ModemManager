@@ -158,6 +158,9 @@ print_sim_info (MMSim *sim)
 #undef VALIDATE
 #define VALIDATE(str) (str ? str : "unknown")
 
+    const gchar * const *spdi = mm_sim_get_spdi (sim);
+    gchar *spdi_list = spdi ? g_strjoinv (",", (gchar **)spdi) : g_strdup("");
+
     g_print ("SIM '%s'\n",
              mm_sim_get_path (sim));
     g_print ("  -------------------------\n"
@@ -165,14 +168,18 @@ print_sim_info (MMSim *sim)
              "             |                   id : '%s'\n"
              "             |          operator id : '%s'\n"
              "             |        operator name : '%s'\n"
+             "             |   operator SPDI list : '%s'\n"
              "             |    show PLMN at home : %s\n"
              "             | show op name roaming : %s\n",
              VALIDATE (mm_sim_get_imsi (sim)),
              VALIDATE (mm_sim_get_identifier (sim)),
              VALIDATE (mm_sim_get_operator_identifier (sim)),
              VALIDATE (mm_sim_get_operator_name (sim)),
+             spdi_list,
              mm_sim_get_display_registered_network_name_at_home (sim) ? "yes" : "no",
              mm_sim_get_display_operator_name_while_roaming (sim) ? "yes" : "no");
+
+    g_free (spdi_list);
 }
 
 static void

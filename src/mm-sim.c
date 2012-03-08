@@ -1358,6 +1358,314 @@ load_operator_name (MMSim *self,
                                    load_operator_name));
 }
 
+static guint32
+asn1_length (guint8 *bin, gsize len, guint *nbytes, GError **error)
+{
+    guint32 length;
+    guint i, lbytes;
+
+    length = bin[0];
+    if (length == 0x80 || length == 0xff) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "Decoding ASN.1 length failed, length value 0x%02x",
+                     length);
+        return 0;
+    }
+
+    lbytes = 1;
+    if (length > 0x80) {
+        lbytes = length - 0x80;
+        if ((lbytes + 1) > len) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "Decoding ASN.1 length failed, value extends past"
+                     " provided buffer");
+        return 0;
+        }
+
+        /*
+         * Length is encoded as a multibyte big-endian value.  Note:
+         * This encoding is necessary to handle lengths above 127
+         * bytes, so it's entirely possible to encounter it on the
+         * storage scale of a SIM.The encoding is BER, not DER, so
+         * it's also possible to encounter small values encoded in
+         * excessive ways.
+         */
+        length = 0;
+        for (i = 1 ; i <= lbytes ; i++) {
+            if (bin[i] > 0 && lbytes > 4) {
+                /* Trying to represent a value that doesn't fit in 32 bits. */
+                g_set_error (error,
+                             MM_CORE_ERROR,
+                             MM_CORE_ERROR_FAILED,
+                             "Decoding ASN.1 length failed, length > UINT_MAX");
+                return 0;
+            }
+            length = (length << 8) | bin[i];
+        }
+    }
+
+    if (nbytes)
+        *nbytes = lbytes;
+
+    return length;
+}
+
+static gchar **
+parse_spdi (const gchar *response,
+            gsize *morelen,
+            GError **error)
+{
+    gchar **plmns = NULL;
+    GError *inner_error = NULL;
+    const gchar *str;
+    gchar buf[256];
+    gsize buflen;
+    guint8 *bin;
+    guint sw1, sw2, i, n, offset, tag, length1, length2;
+    gboolean success = FALSE;
+
+    memset (buf, 0, sizeof (buf));
+    str = mm_strip_tag (response, "+CRSM:");
+    if (sscanf (str, "%d,%d,\"%255[^\"]\"", &sw1, &sw2, (char *) &buf) == 3)
+        success = TRUE;
+    else {
+        /* May not include quotes... */
+        if (sscanf (str, "%d,%d,%255c", &sw1, &sw2, (char *) &buf) == 3)
+            success = TRUE;
+    }
+
+    if (!success) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "Could not parse the CRSM response");
+        return NULL;
+    }
+
+    if (!((sw1 == 0x90 && sw2 == 0x00) ||
+          (sw1 == 0x91) ||
+          (sw1 == 0x92) ||
+          (sw1 == 0x9f))) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "SIM failed to handle CRSM request (sw1 %d sw2 %d)",
+                     sw1, sw2);
+        return NULL;
+    }
+
+    bin = (guint8 *)utils_hexstr2bin (buf, &buflen);
+    if (!bin) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "SIM returned malformed response '%s'",
+                     buf);
+        return NULL;
+    }
+
+    /*
+     * The data is an ASN.1 TLV; the value is also a TLV. So the
+     * overall layout is:
+     *  - Tag (A3)
+     *  - Length (usually one byte, could be longer)
+     *  - Tag (80)
+     *  - Length (usually one byte, could be longer)
+     *  - PLMN values, as 3-byte sequences
+     *
+     * We'll check that the length values are reasonable and
+     * consistent with each other, and that the tags are correct.
+     */
+    i = 0;
+    tag = bin[i++];
+    if (tag != 0xa3) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "SPDI response did not start with A3 tag - %02X",
+                     tag);
+        goto out;
+    }
+
+    length1 = asn1_length (&bin[i], buflen - i, &offset, &inner_error);
+    if (inner_error != NULL) {
+        g_propagate_error (error, inner_error);
+        goto out;
+    }
+    i += offset;
+    if (morelen) {
+        /* Caller has signaled a willingness to retry */
+        if ((length1 + i) > buflen) {
+            *morelen = length1 + i;
+            goto out;
+        }
+        *morelen = 0;
+    }
+
+    if ((i + 1) > buflen) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "SPDI buffer too short");
+        goto out;
+    }
+
+    if (bin[i++] != 0x80) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "SPDI inner TLV did not start with 80 tag - %02X",
+                     tag);
+        goto out;
+    }
+
+    length2 = asn1_length (&bin[i], buflen - i, &offset, &inner_error);
+    if (inner_error != NULL) {
+        g_propagate_error (error, inner_error);
+        goto out;
+    }
+    i += offset;
+
+    if (length2 != length1 - 2) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "SPDI inner TLV has wrong length - %d, should be %d",
+                     length2, length1 - 2);
+        goto out;
+    }
+    if (length2 % 3 != 0) {
+        g_set_error (error,
+                     MM_CORE_ERROR,
+                     MM_CORE_ERROR_FAILED,
+                     "SPDI inner TLV length %d not multiple of 3",
+                     length2);
+        goto out;
+    }
+
+    plmns = g_new (gchar *, 1 + (buflen - i) / 3);
+    n = 0;
+    while ((i+2) < buflen) {
+        gchar *plmn;
+        guint8 b1, b2, b3;
+
+        /* PLMN are three-byte values, MCC/MNC, in reversed-nibble BCD */
+        b1 = bin[i++];
+        b2 = bin[i++];
+        b3 = bin[i++];
+        if (b1 == 0xff && b2 == 0xff && b3 == 0xff)
+            continue;
+
+        if ((b2 >> 4) == 0xf) {
+            /* Two-digit MNC */
+            plmn = g_strdup_printf("%x%x%x%x%x",
+                                   b1 & 0xf, b1 >> 4,
+                                   b2 & 0xf,
+                                   b3 & 0xf, b3 >> 4);
+        } else {
+            /* Three-digit MNC */
+            plmn = g_strdup_printf("%x%x%x%x%x%x",
+                                   b1 & 0xf, b1 >> 4,
+                                   b2 & 0xf, b2 >> 4,
+                                   b3 & 0xf, b3 >> 4);
+        }
+        plmns[n++] = plmn;
+    }
+    plmns[n++] = NULL;
+
+out:
+    free (bin);
+    return plmns;
+}
+
+static gchar **
+load_spdi_finish (MMSim *self,
+                  GAsyncResult *res,
+                  GError **error)
+{
+    const gchar *result;
+
+    if (g_simple_async_result_propagate_error (G_SIMPLE_ASYNC_RESULT (res), error))
+        return NULL;
+
+    result = g_simple_async_result_get_op_res_gpointer (G_SIMPLE_ASYNC_RESULT (res));
+
+    return parse_spdi (result, NULL, error);
+}
+
+STR_REPLY_READY_FN (load_spdi)
+
+static void
+load_spdi_command_ready_retry (MMBaseModem *modem,
+                               GAsyncResult *res,
+                               GSimpleAsyncResult *operation_result)
+{
+    GError *error = NULL;
+    const gchar *response;
+
+    response = mm_base_modem_at_command_finish (modem, res, &error);
+    if (error)
+        g_simple_async_result_take_error (operation_result, error);
+    else {
+        gchar **plmns;
+        gsize morelen;
+
+        plmns = parse_spdi (response, &morelen, &error);
+        g_strfreev (plmns);
+
+        if (morelen > 0 && error == NULL) {
+            gchar *command;
+            command = g_strdup_printf ("+CRSM=176,28621,0,0,%d", morelen);
+            mm_base_modem_at_command (
+                modem,
+                command,
+                10,
+                FALSE,
+                (GAsyncReadyCallback)load_spdi_command_ready,
+                operation_result);
+            g_free (command);
+            return;
+        }
+        g_clear_error (&error);
+        g_simple_async_result_set_op_res_gpointer (operation_result,
+                                                   (gpointer)response,
+                                                   NULL);
+    }
+
+    g_simple_async_result_complete (operation_result);
+    g_object_unref (operation_result);
+}
+
+static void
+load_spdi (MMSim *self,
+           GAsyncReadyCallback callback,
+           gpointer user_data)
+{
+
+    /* READ BINARY of EFspdi (Service Provider Display Information) */
+    /*
+     * Asking for too much data can cause the SIM to return an error,
+     * so we start with a shorter amount and try again (only once) if
+     * we need to. 7 bytes is enough for the minimum legal SPDI - A3
+     * 05 80 03 FF FF FF - and will capture the length field of the
+     * outer TLV in any reasonable encoding.
+     */
+    mm_base_modem_at_command (
+        MM_BASE_MODEM (self->priv->modem),
+        "+CRSM=176,28621,0,0,7",
+        10,
+        FALSE,
+        (GAsyncReadyCallback)load_spdi_command_ready_retry,
+        g_simple_async_result_new (G_OBJECT (self),
+                                   callback,
+                                   user_data,
+                                   load_spdi));
+}
+
 /*****************************************************************************/
 
 typedef struct _InitAsyncContext InitAsyncContext;
@@ -1369,6 +1677,7 @@ typedef enum {
     INITIALIZATION_STEP_IMSI,
     INITIALIZATION_STEP_OPERATOR_ID,
     INITIALIZATION_STEP_OPERATOR_NAME,
+    INITIALIZATION_STEP_SPDI,
     INITIALIZATION_STEP_LAST
 } InitializationStep;
 
@@ -1484,6 +1793,28 @@ load_operator_name_ready (MMSim *self,
     interface_initialization_step (ctx);
 }
 
+static void
+load_spdi_ready (MMSim *self,
+                 GAsyncResult *res,
+                 InitAsyncContext *ctx)
+{
+    GError *error = NULL;
+    gchar **val;
+
+    val = MM_SIM_GET_CLASS (ctx->self)->load_spdi_finish (self, res, &error);
+    mm_gdbus_sim_set_spdi (MM_GDBUS_SIM (self), (const gchar * const *)val);
+    g_strfreev (val);
+
+    if (error) {
+        mm_warn ("couldn't load SPDI: '%s'", error->message);
+        g_error_free (error);
+    }
+
+    /* Go on to next step */
+    ctx->step++;
+    interface_initialization_step (ctx);
+}
+
 #undef STR_REPLY_READY_FN
 #define STR_REPLY_READY_FN(NAME,DISPLAY)                                \
     static void                                                         \
@@ -1583,6 +1914,22 @@ interface_initialization_step (InitAsyncContext *ctx)
         /* Fall down to next step */
         ctx->step++;
 
+    case INITIALIZATION_STEP_SPDI:
+        /* SPDI is meant to be loaded only once during the whole
+         * lifetime of the modem. Therefore, if we already have them loaded,
+         * don't try to load them again. */
+        if (mm_gdbus_sim_get_spdi (MM_GDBUS_SIM (ctx->self)) == NULL &&
+            MM_SIM_GET_CLASS (ctx->self)->load_spdi &&
+            MM_SIM_GET_CLASS (ctx->self)->load_spdi_finish) {
+            MM_SIM_GET_CLASS (ctx->self)->load_spdi (
+                ctx->self,
+                (GAsyncReadyCallback)load_spdi_ready,
+                ctx);
+            return;
+        }
+        /* Fall down to next step */
+        ctx->step++;
+
     case INITIALIZATION_STEP_LAST:
         /* We are done without errors! */
         g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
@@ -1590,7 +1937,6 @@ interface_initialization_step (InitAsyncContext *ctx)
         init_async_context_free (ctx);
         return;
     }
-
 
     g_assert_not_reached ();
 }
@@ -1630,6 +1976,7 @@ initable_init_async (GAsyncInitable *initable,
     mm_gdbus_sim_set_imsi (MM_GDBUS_SIM (initable), NULL);
     mm_gdbus_sim_set_operator_identifier (MM_GDBUS_SIM (initable), NULL);
     mm_gdbus_sim_set_operator_name (MM_GDBUS_SIM (initable), NULL);
+    mm_gdbus_sim_set_spdi (MM_GDBUS_SIM (initable), NULL);
 
     common_init_async (initable, cancellable, callback, user_data);
 }
@@ -1802,6 +2149,8 @@ mm_sim_class_init (MMSimClass *klass)
     klass->load_operator_identifier_finish = load_operator_identifier_finish;
     klass->load_operator_name = load_operator_name;
     klass->load_operator_name_finish = load_operator_name_finish;
+    klass->load_spdi = load_spdi;
+    klass->load_spdi_finish = load_spdi_finish;
     klass->send_pin = send_pin;
     klass->send_pin_finish = common_send_pin_puk_finish;
     klass->send_puk = send_puk;

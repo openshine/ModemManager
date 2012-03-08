@@ -100,6 +100,16 @@
     <property name="OperatorName" type="s" access="read" />
 
     <!--
+        SPDI:
+
+        List of operator IDs (formatted as in OperatorId) to
+        additionally be considered "home" when applying the
+        DisplayRegisteredNetworkNameAtHome and
+        DisplayOperatorNameWhileRoaming rules.
+    -->
+    <property name="SPDI" type="as" access="read" />
+
+    <!--
        DisplayRegisteredNetworkNameAtHome
 
        If true, the user interface is required to display the name of

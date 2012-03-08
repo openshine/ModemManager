@@ -85,6 +85,14 @@ struct _MMSimClass {
                                            gboolean *roam_display,
                                            GError **error);
 
+    /* Load Service Provider Display Information (async) */
+    void (* load_spdi) (MMSim *self,
+                        GAsyncReadyCallback callback,
+                        gpointer user_data);
+    gchar ** (* load_spdi_finish) (MMSim *self,
+                                   GAsyncResult *res,
+                                   GError **error);
+
     /* Change PIN (async) */
     void (* change_pin) (MMSim *self,
                          const gchar *old_pin,
