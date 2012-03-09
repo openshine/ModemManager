@@ -6099,6 +6099,7 @@ disable (MMBaseModem *self,
         ctx = g_new0 (DisablingContext, 1);
         ctx->self = g_object_ref (self);
         ctx->result = result;
+        ctx->cancellable = g_object_ref (cancellable);
         ctx->step = DISABLING_STEP_FIRST;
 
         disabling_step (ctx);
