@@ -312,7 +312,8 @@ print_modem_info (void)
             g_free (own_numbers_string);
             own_numbers_string = NULL;
         }
-    }
+    } else
+        own_numbers_string = NULL;
 
     /* Rework possible multiline strings */
     prefixed_revision = prefix_newlines ("           |                  ",
