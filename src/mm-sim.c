@@ -489,11 +489,15 @@ typedef struct {
     MMSim *self;
     GSimpleAsyncResult *result;
     GError *save_error;
+    gulong wait_for_unlock_id;
 } SendPinPukContext;
 
 static void
 send_pin_puk_context_complete_and_free (SendPinPukContext *ctx)
 {
+    if (ctx->wait_for_unlock_id)
+        g_signal_handler_disconnect (ctx->self->priv->modem,
+                                     ctx->wait_for_unlock_id);
     if (ctx->save_error)
         g_error_free (ctx->save_error);
     g_simple_async_result_complete (ctx->result);
@@ -550,10 +554,34 @@ mm_sim_send_puk_finish (MMSim *self,
 }
 
 static void
+after_unlock_modem_state_changed (MMBaseModem *modem,
+                                  GParamSpec *pspec,
+                                  SendPinPukContext *ctx)
+{
+    MMModemState current = MM_MODEM_STATE_UNKNOWN;
+
+    g_object_get (modem,
+                  MM_IFACE_MODEM_STATE, &current,
+                  NULL);
+
+    /* Done! */
+    if (current >= MM_MODEM_STATE_DISABLED) {
+        mm_dbg ("Modem fully re-initialized after sending PIN");
+        g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
+        send_pin_puk_context_complete_and_free (ctx);
+        return;
+    }
+
+    /* Hum... do we really got here? */
+    g_warn_if_reached ();
+}
+
+static void
 unlock_check_ready (MMIfaceModem *modem,
                     GAsyncResult *res,
                     SendPinPukContext *ctx)
 {
+    MMModemState current;
     GError *error = NULL;
     MMModemLock lock;
 
@@ -568,16 +596,37 @@ unlock_check_ready (MMIfaceModem *modem,
             g_simple_async_result_take_error (ctx->result, ctx->save_error);
             ctx->save_error = NULL;
             g_clear_error (&error);
-        }
-        else if (error)
+        } else if (error)
             g_simple_async_result_take_error (ctx->result, error);
         else
             g_simple_async_result_take_error (ctx->result,
                                               error_for_unlock_check (lock));
-    } else
-        g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
+        send_pin_puk_context_complete_and_free (ctx);
+    }
 
-    send_pin_puk_context_complete_and_free (ctx);
+    /* If we got no lock reported, now we'll need to wait to be in DISABLED
+     * state. This is because we re-initialize the modem as soon as we get
+     * unlocked. */
+
+    current = MM_MODEM_STATE_UNKNOWN;
+    g_object_get (ctx->self->priv->modem,
+                  MM_IFACE_MODEM_STATE, &current,
+                  NULL);
+
+    /* If already disabled, we're done */
+    if (current >= MM_MODEM_STATE_DISABLED) {
+        g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
+        send_pin_puk_context_complete_and_free (ctx);
+        return;
+    }
+
+    /* If we're still locked it's because we need to re-initialize... */
+    g_warn_if_fail (current == MM_MODEM_STATE_LOCKED);
+
+    ctx->wait_for_unlock_id = g_signal_connect (ctx->self->priv->modem,
+                                                "notify::" MM_IFACE_MODEM_STATE,
+                                                G_CALLBACK (after_unlock_modem_state_changed),
+                                                ctx);
 }
 
 static void
