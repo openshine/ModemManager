@@ -554,34 +554,10 @@ mm_sim_send_puk_finish (MMSim *self,
 }
 
 static void
-after_unlock_modem_state_changed (MMBaseModem *modem,
-                                  GParamSpec *pspec,
-                                  SendPinPukContext *ctx)
-{
-    MMModemState current = MM_MODEM_STATE_UNKNOWN;
-
-    g_object_get (modem,
-                  MM_IFACE_MODEM_STATE, &current,
-                  NULL);
-
-    /* Done! */
-    if (current >= MM_MODEM_STATE_DISABLED) {
-        mm_dbg ("Modem fully re-initialized after sending PIN");
-        g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
-        send_pin_puk_context_complete_and_free (ctx);
-        return;
-    }
-
-    /* Hum... do we really got here? */
-    g_warn_if_reached ();
-}
-
-static void
 unlock_check_ready (MMIfaceModem *modem,
                     GAsyncResult *res,
                     SendPinPukContext *ctx)
 {
-    MMModemState current;
     GError *error = NULL;
     MMModemLock lock;
 
@@ -604,29 +580,9 @@ unlock_check_ready (MMIfaceModem *modem,
         send_pin_puk_context_complete_and_free (ctx);
     }
 
-    /* If we got no lock reported, now we'll need to wait to be in DISABLED
-     * state. This is because we re-initialize the modem as soon as we get
-     * unlocked. */
-
-    current = MM_MODEM_STATE_UNKNOWN;
-    g_object_get (ctx->self->priv->modem,
-                  MM_IFACE_MODEM_STATE, &current,
-                  NULL);
-
-    /* If already disabled, we're done */
-    if (current >= MM_MODEM_STATE_DISABLED) {
-        g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
-        send_pin_puk_context_complete_and_free (ctx);
-        return;
-    }
-
-    /* If we're still locked it's because we need to re-initialize... */
-    g_warn_if_fail (current == MM_MODEM_STATE_LOCKED);
-
-    ctx->wait_for_unlock_id = g_signal_connect (ctx->self->priv->modem,
-                                                "notify::" MM_IFACE_MODEM_STATE,
-                                                G_CALLBACK (after_unlock_modem_state_changed),
-                                                ctx);
+    g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
+    send_pin_puk_context_complete_and_free (ctx);
+    return;
 }
 
 static void
