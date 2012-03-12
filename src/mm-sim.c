@@ -1304,7 +1304,7 @@ parse_spn (const gchar *response,
             *display_op_roaming = FALSE;
         } else {
             *display_reg_home = ((bin[0] & 1) == 1);
-            *display_op_roaming = ((bin[0] & 2) == 2);
+            *display_op_roaming = ((bin[0] & 2) == 0);
         }
         /* Remainder is GSM-7 unpacked into octets; convert to UTF8 */
         utf8 = (gchar *)mm_charset_gsm_unpacked_to_utf8 ((guint8 *)bin + 1, buflen - 1);
