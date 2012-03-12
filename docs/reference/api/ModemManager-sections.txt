@@ -5,6 +5,7 @@ MMBearerIpMethod
 MMModem3gppFacility
 MMModem3gppNetworkAvailability
 MMModem3gppRegistrationState
+MMModem3gppDisplayName
 MMModem3gppUssdSessionState
 MMModemAccessTechnology
 MMModemBand

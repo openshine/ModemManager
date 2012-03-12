@@ -129,6 +129,14 @@
     <property name="OperatorName" type="s" access="read" />
 
     <!--
+        RequiredDisplayName:
+
+        A <link linkend="MMModem3gppDisplayName">MMModem3gppDisplayName</link> value
+	specifying the required operator to be displayed to the user.
+    -->
+    <property name="RequiredDisplayName" type="u" access="read" />
+
+    <!--
         EnabledFacilityLocks:
 
         Bitmask of <link linkend="MMModem3gppFacility">MMModem3gppFacility</link> values

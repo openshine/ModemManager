@@ -46,6 +46,7 @@ const gchar *mm_modem_3gpp_get_operator_name (MMModem3gpp *self);
 gchar       *mm_modem_3gpp_dup_operator_name (MMModem3gpp *self);
 MMModem3gppRegistrationState  mm_modem_3gpp_get_registration_state     (MMModem3gpp *self);
 MMModem3gppFacility           mm_modem_3gpp_get_enabled_facility_locks (MMModem3gpp *self);
+MMModem3gppDisplayName        mm_modem_3gpp_get_required_display_name  (MMModem3gpp *self);
 
 
 void     mm_modem_3gpp_register        (MMModem3gpp *self,

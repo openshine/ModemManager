@@ -448,6 +448,22 @@ typedef enum { /*< underscore_name=mm_modem_3gpp_registration_state >*/
 } MMModem3gppRegistrationState;
 
 /**
+ * MMModem3gppDisplayName:
+ * @MM_MODEM_3GPP_DISPLAY_NAME_UNKNOWN: Unknown.
+ * @MM_MODEM_3GPP_DISPLAY_NAME_UNRESTRICTED: No restrictions given.
+ * @MM_MODEM_3GPP_DISPLAY_NAME_REGISTERED: Should display the name of the operator where the SIM card is registered.
+ * @MM_MODEM_3GPP_DISPLAY_NAME_SPN: Should display the name of the operator providing the service.
+ *
+ * Specifies rules given to the applications displaying current operator name.
+ */
+typedef enum { /*< underscore_name=mm_modem_3gpp_display_name >*/
+    MM_MODEM_3GPP_DISPLAY_NAME_UNKNOWN      = 0,
+    MM_MODEM_3GPP_DISPLAY_NAME_UNRESTRICTED = 1,
+    MM_MODEM_3GPP_DISPLAY_NAME_REGISTERED   = 2,
+    MM_MODEM_3GPP_DISPLAY_NAME_SPN          = 3,
+} MMModem3gppDisplayName;
+
+/**
  * MMModem3gppFacility:
  * @MM_MODEM_3GPP_FACILITY_NONE: No facility.
  * @MM_MODEM_3GPP_FACILITY_SIM: SIM lock.

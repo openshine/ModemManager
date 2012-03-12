@@ -607,6 +607,69 @@ parse_mcc_mnc (const gchar *mccmnc,
     return TRUE;
 }
 
+static MMModem3gppDisplayName
+update_display_name_rules (MMIfaceModem3gpp *self,
+                           const gchar *current_operator_code)
+{
+    guint i;
+    const gchar *sim_operator_code;
+    const gchar *const *spdi_list;
+    gboolean display_operator_name_while_roaming;
+    gboolean display_registered_network_name_at_home;
+    gboolean current_is_known;
+    MMSim *sim = NULL;
+    MMModem3gppDisplayName rule = MM_MODEM_3GPP_DISPLAY_NAME_UNKNOWN;
+
+    g_object_get (self,
+                  MM_IFACE_MODEM_SIM, &sim,
+                  NULL);
+    if (!sim)
+        goto out;
+
+    /* Get values from the MMSim, which actually is a MmGdbusSim as well */
+
+    sim_operator_code = mm_gdbus_sim_get_operator_identifier (MM_GDBUS_SIM (sim));
+    if (!sim_operator_code)
+        goto out;
+
+    spdi_list = mm_gdbus_sim_get_spdi (MM_GDBUS_SIM (sim));
+    if (!spdi_list)
+        goto out;
+
+    display_operator_name_while_roaming = mm_gdbus_sim_get_display_operator_name_while_roaming (MM_GDBUS_SIM (sim));
+    display_registered_network_name_at_home = mm_gdbus_sim_get_display_registered_network_name_at_home (MM_GDBUS_SIM (sim));
+
+    /* Check if the current network is known (either the registered one or in the SPDI list) */
+    current_is_known = FALSE;
+    if (g_str_equal (sim_operator_code, current_operator_code))
+        current_is_known = TRUE;
+    else if (spdi_list) {
+        for (i = 0; spdi_list[i]; i++) {
+            if (g_str_equal (spdi_list[i], current_operator_code)) {
+                current_is_known = TRUE;
+                break;
+            }
+        }
+    }
+
+    /* Apply display rules logic */
+    rule = MM_MODEM_3GPP_DISPLAY_NAME_UNRESTRICTED;
+
+    if (current_is_known) {
+        if (display_registered_network_name_at_home)
+            rule = MM_MODEM_3GPP_DISPLAY_NAME_REGISTERED;
+    } else {
+        if (display_operator_name_while_roaming)
+            rule = MM_MODEM_3GPP_DISPLAY_NAME_SPN;
+    }
+
+ out:
+    if (sim)
+        g_object_unref (sim);
+
+    return rule;
+}
+
 static void
 load_operator_code_ready (MMIfaceModem3gpp *self,
                           GAsyncResult *res)
@@ -614,6 +677,7 @@ load_operator_code_ready (MMIfaceModem3gpp *self,
     GError *error = NULL;
     MmGdbusModem3gpp *skeleton = NULL;
     gchar *str;
+    MMModem3gppDisplayName display_name_rules;
 
     str = MM_IFACE_MODEM_3GPP_GET_INTERFACE (self)->load_operator_code_finish (self, res, &error);
     if (error) {
@@ -634,6 +698,11 @@ load_operator_code_ready (MMIfaceModem3gpp *self,
         if (parse_mcc_mnc (str, &mcc, &mnc))
             mm_iface_modem_location_3gpp_update_mcc_mnc (MM_IFACE_MODEM_LOCATION (self), mcc, mnc);
     }
+
+    /* Check if we can update display name rules */
+    display_name_rules = update_display_name_rules (self, str);
+    if (mm_gdbus_modem3gpp_get_required_display_name (skeleton) != display_name_rules)
+        mm_gdbus_modem3gpp_set_required_display_name (skeleton, (guint) display_name_rules);
 
     g_free (str);
     g_object_unref (skeleton);

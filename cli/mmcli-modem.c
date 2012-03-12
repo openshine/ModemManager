@@ -352,13 +352,16 @@ print_modem_info (void)
                  "           |  enabled locks: '%s'\n"
                  "           |    operator id: '%s'\n"
                  "           |  operator name: '%s'\n"
-                 "           |   registration: '%s'\n",
+                 "           |   registration: '%s'\n"
+                 "           |   display rule: '%s'\n",
                  VALIDATE_UNKNOWN (mm_modem_3gpp_get_imei (ctx->modem_3gpp)),
                  facility_locks,
                  VALIDATE_UNKNOWN (mm_modem_3gpp_get_operator_code (ctx->modem_3gpp)),
                  VALIDATE_UNKNOWN (mm_modem_3gpp_get_operator_name (ctx->modem_3gpp)),
                  mm_modem_3gpp_registration_state_get_string (
-                     mm_modem_3gpp_get_registration_state ((ctx->modem_3gpp))));
+                     mm_modem_3gpp_get_registration_state ((ctx->modem_3gpp))),
+                 mm_modem_3gpp_display_name_get_string (
+                     mm_modem_3gpp_get_required_display_name ((ctx->modem_3gpp))));
 
         g_free (facility_locks);
     }

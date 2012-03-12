@@ -224,6 +224,14 @@ mm_modem_3gpp_get_enabled_facility_locks (MMModem3gpp *self)
     return mm_gdbus_modem3gpp_get_enabled_facility_locks (self);
 }
 
+MMModem3gppDisplayName
+mm_modem_3gpp_get_required_display_name (MMModem3gpp *self)
+{
+    g_return_val_if_fail (MM_GDBUS_IS_MODEM3GPP (self), MM_MODEM_3GPP_DISPLAY_NAME_UNKNOWN);
+
+    return mm_gdbus_modem3gpp_get_required_display_name (self);
+}
+
 void
 mm_modem_3gpp_register (MMModem3gpp *self,
                         const gchar *network_id,
