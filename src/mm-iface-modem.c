@@ -1170,7 +1170,7 @@ enable_ready (MMBaseModem *self,
         else
             mm_gdbus_modem_complete_enable (ctx->skeleton, ctx->invocation);
     } else {
-        if (mm_base_modem_disable_finish (self, res, &error))
+        if (!mm_base_modem_disable_finish (self, res, &error))
             g_dbus_method_invocation_take_error (ctx->invocation, error);
         else
             mm_gdbus_modem_complete_enable (ctx->skeleton, ctx->invocation);
