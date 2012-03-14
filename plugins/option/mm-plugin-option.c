@@ -66,8 +66,7 @@ grab_port (MMPluginBase *base,
         return NULL;
     }
 
-    /* This is the MM equivalent of NM commit 9d7f5b3d084eee2ccfff721c4beca3e3f34bdc50;
-     * Genuine Option NV devices are always supposed to use USB interface 0 as
+    /* Genuine Option NV devices are always supposed to use USB interface 0 as
      * the modem/data port, per mail with Option engineers.  Only this port
      * will emit responses to dialing commands.
      */
@@ -78,10 +77,10 @@ grab_port (MMPluginBase *base,
     /* If this is the first port being grabbed, create a new modem object */
     if (!existing)
         modem = MM_BASE_MODEM (mm_broadband_modem_option_new (mm_port_probe_get_port_physdev (probe),
-                                                             driver,
-                                                             mm_plugin_get_name (MM_PLUGIN (base)),
-                                                             vendor,
-                                                             product));
+                                                              driver,
+                                                              mm_plugin_get_name (MM_PLUGIN (base)),
+                                                              vendor,
+                                                              product));
 
     if (!mm_base_modem_grab_port (existing ? existing : modem,
                                   subsys,
