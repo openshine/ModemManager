@@ -140,6 +140,17 @@ mm_plugin_base_get_device_ids (MMPluginBase *self,
                 /* Platform devices don't usually have a VID/PID */
                 success = TRUE;
                 goto out;
+            } else if (!strcmp (parent_subsys, "usb") &&
+                       !strcmp (g_udev_device_get_driver (parent), "qmi_wwan")) {
+                /* Need to look for vendor/product in the parent of the QMI device */
+                GUdevDevice *qmi_parent;
+
+                qmi_parent = g_udev_device_get_parent (parent);
+                if (qmi_parent) {
+                    vid = g_udev_device_get_property (qmi_parent, "ID_VENDOR_ID");
+                    pid = g_udev_device_get_property (qmi_parent, "ID_MODEL_ID");
+                    g_object_unref (qmi_parent);
+                }
             }
         }
     }
@@ -656,11 +667,12 @@ supports_port (MMPlugin *plugin,
         probe = mm_port_probe_cache_get (port, physdev_path, driver);
     g_assert (probe);
 
-    /* Before launching any probing, check if the port is a net device (which
-     * cannot be probed).
+    /* Before launching any probing, check if the port is a net device OR a wdm
+     * device (which cannot be probed).
      * TODO: With the new defer-until-suggested we probably don't need the modem
      * object being passed down here just for this. */
-    if (g_str_equal (subsys, "net")) {
+    if (g_str_equal (subsys, "net") ||
+        g_str_has_prefix (name, "cdc-wdm")) {
         /* Keep track of the probe object, which is considered finished */
         if (!g_hash_table_lookup (priv->tasks, key))
             g_hash_table_insert (priv->tasks,

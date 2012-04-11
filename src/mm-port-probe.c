@@ -890,7 +890,9 @@ mm_port_probe_is_at (MMPortProbe *self)
 {
     g_return_val_if_fail (MM_IS_PORT_PROBE (self), FALSE);
 
-    if (g_str_equal (self->priv->subsys, "net"))
+    if (g_str_equal (self->priv->subsys, "net") ||
+        (g_str_equal (self->priv->subsys, "usb") &&
+         g_str_has_prefix (self->priv->name, "cdc-wdm")))
         return FALSE;
 
     /* Warn if it wasn't probed */
@@ -904,7 +906,9 @@ mm_port_probe_is_qcdm (MMPortProbe *self)
 {
     g_return_val_if_fail (MM_IS_PORT_PROBE (self), FALSE);
 
-    if (g_str_equal (self->priv->subsys, "net"))
+    if (g_str_equal (self->priv->subsys, "net") ||
+        (g_str_equal (self->priv->subsys, "usb") &&
+         g_str_has_prefix (self->priv->name, "cdc-wdm")))
         return FALSE;
 
     /* Warn if it wasn't probed */
@@ -920,6 +924,10 @@ mm_port_probe_get_port_type (MMPortProbe *self)
 
     if (g_str_equal (self->priv->subsys, "net"))
         return MM_PORT_TYPE_NET;
+
+    if (g_str_equal (self->priv->subsys, "usb") &&
+        g_str_has_prefix (self->priv->name, "cdc-wdm"))
+        return MM_PORT_TYPE_WDM;
 
     if (self->priv->flags & MM_PORT_PROBE_QCDM &&
         self->priv->is_qcdm)
@@ -945,7 +953,9 @@ mm_port_probe_get_vendor (MMPortProbe *self)
 {
     g_return_val_if_fail (MM_IS_PORT_PROBE (self), NULL);
 
-    if (g_str_equal (self->priv->subsys, "net"))
+    if (g_str_equal (self->priv->subsys, "net") ||
+        (g_str_equal (self->priv->subsys, "usb") &&
+         g_str_has_prefix (self->priv->name, "cdc-wdm")))
         return NULL;
 
     /* Warn if it wasn't probed */
@@ -959,7 +969,9 @@ mm_port_probe_get_product (MMPortProbe *self)
 {
     g_return_val_if_fail (MM_IS_PORT_PROBE (self), NULL);
 
-    if (g_str_equal (self->priv->subsys, "net"))
+    if (g_str_equal (self->priv->subsys, "net") ||
+        (g_str_equal (self->priv->subsys, "usb") &&
+         g_str_has_prefix (self->priv->name, "cdc-wdm")))
         return NULL;
 
     /* Warn if it wasn't probed */

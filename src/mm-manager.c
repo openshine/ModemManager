@@ -624,7 +624,8 @@ handle_uevent (GUdevClient *client,
                gpointer user_data)
 {
     MMManager *self = MM_MANAGER (user_data);
-    const char *subsys;
+    const gchar *subsys;
+    const gchar *name;
 
     g_return_if_fail (action != NULL);
 
@@ -632,15 +633,16 @@ handle_uevent (GUdevClient *client,
     subsys = g_udev_device_get_subsystem (device);
     g_return_if_fail (subsys != NULL);
 
-    g_return_if_fail (!strcmp (subsys, "tty") || !strcmp (subsys, "net") || !strcmp (subsys, "usb"));
+    g_return_if_fail (g_str_equal (subsys, "tty") || g_str_equal (subsys, "net") || g_str_equal (subsys, "usb"));
 
-    /* We only care about tty/net devices when adding modem ports,
+    /* We only care about tty/net and usb/cdc-wdm devices when adding modem ports,
      * but for remove, also handle usb parent device remove events
      */
-    if (   (!strcmp (action, "add") || !strcmp (action, "move") || !strcmp (action, "change"))
-        && (strcmp (subsys, "usb") != 0))
+    name = g_udev_device_get_name (device);
+    if (   (g_str_equal (action, "add") || g_str_equal (action, "move") || g_str_equal (action, "change"))
+        && (!g_str_equal (subsys, "usb") || (name && g_str_has_prefix (name, "cdc-wdm"))))
         device_added (self, device);
-    else if (!strcmp (action, "remove"))
+    else if (g_str_equal (action, "remove"))
         device_removed (self, device);
 }
 
@@ -664,6 +666,17 @@ mm_manager_start (MMManager *manager)
     devices = g_udev_client_query_by_subsystem (manager->priv->udev, "net");
     for (iter = devices; iter; iter = g_list_next (iter)) {
         device_added (manager, G_UDEV_DEVICE (iter->data));
+        g_object_unref (G_OBJECT (iter->data));
+    }
+    g_list_free (devices);
+
+    devices = g_udev_client_query_by_subsystem (manager->priv->udev, "usb");
+    for (iter = devices; iter; iter = g_list_next (iter)) {
+        const gchar *name;
+
+        name = g_udev_device_get_name (G_UDEV_DEVICE (iter->data));
+        if (name && g_str_has_prefix (name, "cdc-wdm"))
+            device_added (manager, G_UDEV_DEVICE (iter->data));
         g_object_unref (G_OBJECT (iter->data));
     }
     g_list_free (devices);
