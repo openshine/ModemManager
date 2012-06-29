@@ -2247,15 +2247,11 @@ typedef enum {
     DISABLING_STEP_CURRENT_BANDS,
     DISABLING_STEP_ALLOWED_MODES,
     DISABLING_STEP_MODEM_POWER_DOWN,
-    DISABLING_STEP_CLOSE_PORTS,
     DISABLING_STEP_LAST
 } DisablingStep;
 
 struct _DisablingContext {
     MMIfaceModem *self;
-    MMAtSerialPort *primary;
-    MMAtSerialPort *secondary;
-    MMQcdmSerialPort *qcdm;
     DisablingStep step;
     MMModemState previous_state;
     gboolean disabled;
@@ -2272,9 +2268,6 @@ disabling_context_new (MMIfaceModem *self,
 
     ctx = g_new0 (DisablingContext, 1);
     ctx->self = g_object_ref (self);
-    ctx->primary = mm_base_modem_get_port_primary (MM_BASE_MODEM (self));
-    ctx->secondary = mm_base_modem_get_port_secondary (MM_BASE_MODEM (self));
-    ctx->qcdm = mm_base_modem_get_port_qcdm (MM_BASE_MODEM (self));
     ctx->result = g_simple_async_result_new (G_OBJECT (self),
                                              callback,
                                              user_data,
@@ -2309,12 +2302,6 @@ disabling_context_complete_and_free (DisablingContext *ctx)
                                      MM_MODEM_STATE_CHANGE_REASON_UNKNOWN);
 
     g_object_unref (ctx->self);
-    if (ctx->primary)
-        g_object_unref (ctx->primary);
-    if (ctx->secondary)
-        g_object_unref (ctx->secondary);
-    if (ctx->qcdm)
-        g_object_unref (ctx->qcdm);
     g_object_unref (ctx->result);
     g_object_unref (ctx->skeleton);
     g_free (ctx);
@@ -2389,22 +2376,6 @@ interface_disabling_step (DisablingContext *ctx)
         /* Fall down to next step */
         ctx->step++;
 
-    case DISABLING_STEP_CLOSE_PORTS:
-        /* While the modem is enabled ports are kept open, so we need to close
-         * them when the modem gets disabled. As this (should) be the last
-         * closing in order to get it really closed (open count = 1), it should
-         * be safe to check whether they are really open before trying to close.
-         */
-        mm_dbg ("Closing all ports...");
-        if (ctx->primary && mm_serial_port_is_open (MM_SERIAL_PORT (ctx->primary)))
-            mm_serial_port_close (MM_SERIAL_PORT (ctx->primary));
-        if (ctx->secondary && mm_serial_port_is_open (MM_SERIAL_PORT (ctx->secondary)))
-            mm_serial_port_close (MM_SERIAL_PORT (ctx->secondary));
-        if (ctx->qcdm && mm_serial_port_is_open (MM_SERIAL_PORT (ctx->qcdm)))
-            mm_serial_port_close (MM_SERIAL_PORT (ctx->qcdm));
-        /* Fall down to next step */
-        ctx->step++;
-
     case DISABLING_STEP_LAST:
         /* We are done without errors! */
         g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
@@ -2434,8 +2405,6 @@ static void interface_enabling_step (EnablingContext *ctx);
 
 typedef enum {
     ENABLING_STEP_FIRST,
-    ENABLING_STEP_OPEN_PORTS,
-    ENABLING_STEP_FLASH_PORT,
     ENABLING_STEP_MODEM_INIT,
     ENABLING_STEP_MODEM_POWER_UP,
     ENABLING_STEP_MODEM_AFTER_POWER_UP,
@@ -2449,12 +2418,6 @@ typedef enum {
 
 struct _EnablingContext {
     MMIfaceModem *self;
-    MMAtSerialPort *primary;
-    gboolean primary_open;
-    MMAtSerialPort *secondary;
-    gboolean secondary_open;
-    MMQcdmSerialPort *qcdm;
-    gboolean qcdm_open;
     EnablingStep step;
     MMModemCharset supported_charsets;
     const MMModemCharset *current_charset;
@@ -2474,9 +2437,6 @@ enabling_context_new (MMIfaceModem *self,
 
     ctx = g_new0 (EnablingContext, 1);
     ctx->self = g_object_ref (self);
-    ctx->primary = mm_base_modem_get_port_primary (MM_BASE_MODEM (self));
-    ctx->secondary = mm_base_modem_get_port_secondary (MM_BASE_MODEM (self));
-    ctx->qcdm = mm_base_modem_get_port_qcdm (MM_BASE_MODEM (self));
     ctx->cancellable = g_object_ref (cancellable);
     ctx->result = g_simple_async_result_new (G_OBJECT (self),
                                              callback,
@@ -2504,7 +2464,7 @@ enabling_context_complete_and_free (EnablingContext *ctx)
         mm_iface_modem_update_state (ctx->self,
                                      MM_MODEM_STATE_ENABLED,
                                      MM_MODEM_STATE_CHANGE_REASON_USER_REQUESTED);
-    else {
+    else
         /* Fallback to DISABLED/LOCKED */
         mm_iface_modem_update_state (
             ctx->self,
@@ -2512,22 +2472,8 @@ enabling_context_complete_and_free (EnablingContext *ctx)
              MM_MODEM_STATE_DISABLED :
              MM_MODEM_STATE_LOCKED),
             MM_MODEM_STATE_CHANGE_REASON_UNKNOWN);
-        /* Close the ports if enabling failed */
-        if (ctx->primary_open)
-            mm_serial_port_close (MM_SERIAL_PORT (ctx->primary));
-        if (ctx->secondary_open)
-            mm_serial_port_close (MM_SERIAL_PORT (ctx->secondary));
-        if (ctx->qcdm_open)
-            mm_serial_port_close (MM_SERIAL_PORT (ctx->qcdm));
-    }
 
     g_object_unref (ctx->self);
-    if (ctx->primary)
-        g_object_unref (ctx->primary);
-    if (ctx->secondary)
-        g_object_unref (ctx->secondary);
-    if (ctx->qcdm)
-        g_object_unref (ctx->qcdm);
     g_object_unref (ctx->result);
     g_object_unref (ctx->cancellable);
     g_object_unref (ctx->skeleton);
@@ -2682,24 +2628,6 @@ load_current_bands_ready (MMIfaceModem *self,
     interface_enabling_step (ctx);
 }
 
-static void
-interface_enabling_flash_done (MMSerialPort *port,
-                               GError *error,
-                               gpointer user_data)
-{
-    EnablingContext *ctx = user_data;
-
-    if (error) {
-        g_simple_async_result_set_from_error (ctx->result, error);
-        enabling_context_complete_and_free (ctx);
-        return;
-    }
-
-    /* Go on to next step */
-    ctx->step++;
-    interface_enabling_step (ctx);
-}
-
 static const MMModemCharset best_charsets[] = {
     MM_MODEM_CHARSET_UTF8,
     MM_MODEM_CHARSET_UCS2,
@@ -2720,59 +2648,6 @@ interface_enabling_step (EnablingContext *ctx)
     case ENABLING_STEP_FIRST:
         /* Fall down to next step */
         ctx->step++;
-
-    case ENABLING_STEP_OPEN_PORTS: {
-        GError *error = NULL;
-
-        /* Open primary port */
-        if (!ctx->primary) {
-            g_simple_async_result_set_error (ctx->result,
-                                             MM_CORE_ERROR,
-                                             MM_CORE_ERROR_FAILED,
-                                             "Cannot enable: no primary port");
-            enabling_context_complete_and_free (ctx);
-            return;
-        }
-
-        if (!mm_serial_port_open (MM_SERIAL_PORT (ctx->primary), &error)) {
-            g_simple_async_result_take_error (ctx->result, error);
-            enabling_context_complete_and_free (ctx);
-            return;
-        }
-        ctx->primary_open = TRUE;
-
-        /* If there is a secondary AT port, open it */
-        if (ctx->secondary) {
-            if (!mm_serial_port_open (MM_SERIAL_PORT (ctx->secondary), &error)) {
-                g_simple_async_result_take_error (ctx->result, error);
-                enabling_context_complete_and_free (ctx);
-                return;
-            }
-            ctx->secondary_open = TRUE;
-        }
-
-        /* If there is a qcdm AT port, open it */
-        if (ctx->qcdm) {
-            if (!mm_serial_port_open (MM_SERIAL_PORT (ctx->qcdm), &error)) {
-                g_simple_async_result_take_error (ctx->result, error);
-                enabling_context_complete_and_free (ctx);
-                return;
-            }
-            ctx->qcdm_open = TRUE;
-        }
-
-        /* Fall down to next step */
-        ctx->step++;
-    }
-
-    case ENABLING_STEP_FLASH_PORT:
-        /* Flash port */
-        mm_serial_port_flash (MM_SERIAL_PORT (ctx->primary),
-                              100,
-                              FALSE,
-                              interface_enabling_flash_done,
-                              ctx);
-        return;
 
     case ENABLING_STEP_MODEM_INIT:
         if (MM_IFACE_MODEM_GET_INTERFACE (ctx->self)->modem_init &&
