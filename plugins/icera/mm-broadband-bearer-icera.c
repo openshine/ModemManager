@@ -343,10 +343,10 @@ disconnect_ipdpact_ready (MMBaseModem *modem,
 
     mm_base_modem_at_command_finish (MM_BASE_MODEM (modem), res, &error);
     if (error) {
-        mm_dbg ("PDP context deactivation failed: %s", error->message);
 
         ctx->self->priv->disconnect_pending = NULL;
 
+        g_simple_async_result_take_error (ctx->result, error);
         disconnect_3gpp_context_complete_and_free (ctx);
         return;
     }
