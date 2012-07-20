@@ -383,7 +383,7 @@ disconnect_3gpp (MMBroadbandBearer *bearer,
     Disconnect3gppContext *ctx;
 
     ctx = g_new0 (Disconnect3gppContext, 1);
-    ctx->self = self;
+    ctx->self = g_object_ref (self);
     ctx->result = g_simple_async_result_new (G_OBJECT (self),
                                              callback,
                                              user_data,
