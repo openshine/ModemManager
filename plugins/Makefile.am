@@ -41,7 +41,8 @@ pkglib_LTLIBRARIES = \
 	libmm-plugin-samsung.la \
 	libmm-plugin-wavecom.la \
 	libmm-plugin-cinterion.la \
-	libmm-plugin-iridium.la
+	libmm-plugin-iridium.la \
+	libmm-plugin-bandrich.la
 
 # Generic
 
@@ -458,6 +459,29 @@ libmm_plugin_iridium_la_LDFLAGS = \
 	$(GUDEV_LDFLAGS) \
 	-module \
 	-avoid-version
+
+# Bandrich modem
+
+libmm_plugin_bandrich_la_SOURCES = \
+	mm-plugin-bandrich.c \
+	mm-plugin-bandrich.h \
+	mm-modem-bandrich.c \
+	mm-modem-bandrich.h
+
+libmm_plugin_bandrich_la_CPPFLAGS = \
+	$(MM_CFLAGS) \
+	$(GUDEV_CFLAGS) \
+	-I$(top_srcdir)/src \
+	-I$(top_srcdir)/include
+
+libmm_plugin_bandrich_la_LDFLAGS = \
+	$(GUDEV_LDFLAGS) \
+	-module \
+	-avoid-version
+
+libmm_plugin_bandrich_la_LIBADD = \
+	$(builddir)/libicera-utils.la
+
 
 udevrulesdir = $(UDEV_BASE_DIR)/rules.d
 udevrules_DATA = \
