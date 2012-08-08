@@ -492,19 +492,8 @@ setup_registration_checks_ready (MMIfaceModemCdma *self,
         return;
     }
 
-    /* Allow quick skip of all intermediate steps for those modems providing
-     * only a detailed registration state check */
-    if (!ctx->skip_qcdm_call_manager_step &&
-        !ctx->skip_qcdm_hdr_step &&
-        !ctx->skip_at_cdma_service_status_step &&
-        !ctx->skip_at_cdma1x_serving_system_step &&
-        ctx->skip_detailed_registration_state)
-        /* Jump to the detailed registration state check */
-        ctx->step = REGISTRATION_CHECK_STEP_DETAILED_REGISTRATION_STATE;
-    else
-        /* Go on to next step */
-        ctx->step++;
-
+    /* Go on to next step */
+    ctx->step++;
     registration_check_step (ctx);
 }
 
@@ -894,17 +883,6 @@ mm_iface_modem_cdma_run_registration_checks (MMIfaceModemCdma *self,
             ctx->cdma1x_supported ? "yes" : "no",
             ctx->evdo_supported ? "yes" : "no");
 
-    if (!MM_IFACE_MODEM_CDMA_GET_INTERFACE (ctx->self)->setup_registration_checks &&
-        !MM_IFACE_MODEM_CDMA_GET_INTERFACE (ctx->self)->get_call_manager_state &&
-        !MM_IFACE_MODEM_CDMA_GET_INTERFACE (ctx->self)->get_hdr_state &&
-        !MM_IFACE_MODEM_CDMA_GET_INTERFACE (ctx->self)->get_service_status &&
-        !MM_IFACE_MODEM_CDMA_GET_INTERFACE (ctx->self)->get_cdma1x_serving_system &&
-        MM_IFACE_MODEM_CDMA_GET_INTERFACE (ctx->self)->get_detailed_registration_state)
-        /* Special handling of the case of having only the detailed registration
-         * state callback */
-        ctx->step = REGISTRATION_CHECK_STEP_DETAILED_REGISTRATION_STATE;
-    else
-        ctx->step = REGISTRATION_CHECK_STEP_FIRST;
     registration_check_step (ctx);
 }
 
