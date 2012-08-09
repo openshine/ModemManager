@@ -2507,17 +2507,12 @@ registration_state_changed (MMAtSerialPort *port,
 
     /* Report new registration state */
     if (cgreg)
-        mm_iface_modem_3gpp_update_ps_registration_state (MM_IFACE_MODEM_3GPP (self),
-                                                          state,
-                                                          act,
-                                                          lac,
-                                                          cell_id);
+        mm_iface_modem_3gpp_update_ps_registration_state (MM_IFACE_MODEM_3GPP (self), state);
     else
-        mm_iface_modem_3gpp_update_cs_registration_state (MM_IFACE_MODEM_3GPP (self),
-                                                          state,
-                                                          act,
-                                                          lac,
-                                                          cell_id);
+        mm_iface_modem_3gpp_update_cs_registration_state (MM_IFACE_MODEM_3GPP (self), state);
+
+    mm_iface_modem_3gpp_update_access_technologies (MM_IFACE_MODEM_3GPP (self), act);
+    mm_iface_modem_3gpp_update_location (MM_IFACE_MODEM_3GPP (self), lac, cell_id);
 }
 
 static void
@@ -2830,22 +2825,15 @@ registration_status_check_ready (MMBroadbandModem *self,
     if (cgreg) {
         if (ctx->running_cs)
             mm_dbg ("Got PS registration state when checking CS registration state");
-        mm_iface_modem_3gpp_update_ps_registration_state (
-            MM_IFACE_MODEM_3GPP (self),
-            state,
-            act,
-            lac,
-            cid);
+        mm_iface_modem_3gpp_update_ps_registration_state (MM_IFACE_MODEM_3GPP (self), state);
     } else {
         if (ctx->running_ps)
             mm_dbg ("Got CS registration state when checking PS registration state");
-        mm_iface_modem_3gpp_update_cs_registration_state (
-            MM_IFACE_MODEM_3GPP (self),
-            state,
-            act,
-            lac,
-            cid);
+        mm_iface_modem_3gpp_update_cs_registration_state (MM_IFACE_MODEM_3GPP (self), state);
     }
+
+    mm_iface_modem_3gpp_update_access_technologies (MM_IFACE_MODEM_3GPP (self), act);
+    mm_iface_modem_3gpp_update_location (MM_IFACE_MODEM_3GPP (self), lac, cid);
 
     run_registration_checks_context_step (ctx);
 }
