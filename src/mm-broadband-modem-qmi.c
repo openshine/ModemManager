@@ -1770,6 +1770,96 @@ modem_power_up (MMIfaceModem *self,
 }
 
 /*****************************************************************************/
+/* Modem initialization (Modem interface) */
+
+static gboolean
+modem_init_finish (MMIfaceModem *self,
+                   GAsyncResult *res,
+                   GError **error)
+{
+    return !g_simple_async_result_propagate_error (G_SIMPLE_ASYNC_RESULT (res), error);
+}
+
+static void
+ctl_set_data_format_ready (QmiClientCtl *client,
+                           GAsyncResult *res,
+                           GSimpleAsyncResult *simple)
+{
+    QmiMessageCtlSetDataFormatOutput *output = NULL;
+    GError *error = NULL;
+    QmiCtlDataLinkProtocol protocol;
+
+    output = qmi_client_ctl_set_data_format_finish (client, res, &error);
+    if (!output) {
+        g_prefix_error (&error, "QMI operation failed: ");
+        g_simple_async_result_take_error (simple, error);
+    } else if (!qmi_message_ctl_set_data_format_output_get_result (output, &error)) {
+        g_prefix_error (&error, "Couldn't set data format: ");
+        g_simple_async_result_take_error (simple, error);
+    }
+
+    if (output)
+        qmi_message_ctl_set_data_format_output_unref (output);
+
+    g_simple_async_result_complete (simple);
+    g_object_unref (simple);
+}
+
+static void
+modem_init (MMIfaceModem *self,
+            GAsyncReadyCallback callback,
+            gpointer user_data)
+{
+    QmiMessageCtlSetDataFormatInput *input;
+    GSimpleAsyncResult *result;
+    QmiClient *client = NULL;
+    GError *error = NULL;
+
+    if (!ensure_qmi_client (MM_BROADBAND_MODEM_QMI (self),
+                            QMI_SERVICE_CTL, &client,
+                            callback, user_data))
+        return;
+
+    result = g_simple_async_result_new (G_OBJECT (self),
+                                        callback,
+                                        user_data,
+                                        modem_init);
+
+    input = qmi_message_ctl_set_data_format_input_new ();
+
+    /* Turn off the QoS headers */
+    if (!qmi_message_ctl_set_data_format_input_set_format (
+            input,
+            QMI_CTL_DATA_FORMAT_QOS_FLOW_HEADER_ABSENT,
+            &error)) {
+        goto error;
+    }
+
+    /* Ethernet encapsulation, not Raw IP */
+    if (!qmi_message_ctl_set_data_format_input_set_protocol (
+            input,
+            QMI_CTL_DATA_LINK_PROTOCOL_802_3,
+            &error)) {
+        goto error;
+    }
+
+    mm_dbg ("Setting data format to 802.3 + no QoS header...");
+    qmi_client_ctl_set_data_format (QMI_CLIENT_CTL (client),
+                                    input,
+                                    5,
+                                    NULL,
+                                    (GAsyncReadyCallback)ctl_set_data_format_ready,
+                                    result);
+    return;
+
+error:
+    qmi_message_ctl_set_data_format_input_unref (input);
+    g_simple_async_result_take_error (result, error);
+    g_simple_async_result_complete_in_idle (result);
+    g_object_unref (result);
+}
+
+/*****************************************************************************/
 /* Create SIM (Modem interface) */
 
 static MMSim *
@@ -5050,8 +5140,8 @@ iface_modem_init (MMIfaceModem *iface)
     iface->load_supported_modes_finish = modem_load_supported_modes_finish;
 
     /* Enabling/disabling */
-    iface->modem_init = NULL;
-    iface->modem_init_finish = NULL;
+    iface->modem_init = modem_init;
+    iface->modem_init_finish = modem_init_finish;
     iface->modem_power_up = modem_power_up;
     iface->modem_power_up_finish = modem_power_up_down_finish;
     iface->modem_after_power_up = NULL;

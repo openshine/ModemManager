@@ -47,6 +47,19 @@ mm_qmi_port_peek_client (MMQmiPort *self,
 {
     GList *l;
 
+    if (service == QMI_SERVICE_CTL) {
+        QmiClient *client_ctl = NULL;
+
+        g_object_get (G_OBJECT (self->priv->qmi_device),
+                      QMI_DEVICE_CLIENT_CTL, &client_ctl,
+                      NULL);
+        /* balance the ref from g_object_get() */
+        if (client_ctl)
+            g_object_unref (client_ctl);
+
+        return client_ctl;
+    }
+
     for (l = self->priv->services; l; l = g_list_next (l)) {
         ServiceInfo *info = l->data;
 
