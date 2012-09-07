@@ -17,16 +17,20 @@
 #include <config.h>
 #include <string.h>
 #include <dbus/dbus-glib.h>
+#include <arpa/inet.h>
+
 #include "mm-modem.h"
 #include "mm-log.h"
 #include "mm-errors.h"
 #include "mm-callback-info.h"
 #include "mm-marshal.h"
+#include "mm-utils.h"
 
 static void impl_modem_enable (MMModem *modem, gboolean enable, DBusGMethodInvocation *context);
 static void impl_modem_connect (MMModem *modem, const char *number, DBusGMethodInvocation *context);
 static void impl_modem_disconnect (MMModem *modem, DBusGMethodInvocation *context);
 static void impl_modem_get_ip4_config (MMModem *modem, DBusGMethodInvocation *context);
+static void impl_modem_get_ip4_config_ex (MMModem *modem, DBusGMethodInvocation *context);
 static void impl_modem_get_info (MMModem *modem, DBusGMethodInvocation *context);
 static void impl_modem_reset (MMModem *modem, DBusGMethodInvocation *context);
 static void impl_modem_factory_reset (MMModem *modem, const char *code, DBusGMethodInvocation *context);
@@ -338,6 +342,109 @@ impl_modem_get_ip4_config (MMModem *modem,
                            DBusGMethodInvocation *context)
 {
     mm_modem_get_ip4_config (modem, get_ip4_done, context);
+}
+
+static guint32
+_ip4_netmask_to_prefix (guint32 netmask)
+{
+	guchar *p, *end;
+	guint32 prefix = 0;
+
+	p = (guchar *) &netmask;
+	end = p + sizeof (guint32);
+
+	while ((*p == 0xFF) && p < end) {
+		prefix += 8;
+		p++;
+	}
+
+	if (p < end) {
+		guchar v = *p;
+
+		while (v) {
+			prefix++;
+			v <<= 1;
+		}
+	}
+
+	return prefix;
+}
+
+static void
+get_ip4_ex_done (MMModem *modem,
+                 guint32 address,
+                 guint32 netmask,
+                 guint32 gateway,
+                 GArray *dns,
+                 GError *error,
+                 gpointer user_data)
+{
+    DBusGMethodInvocation *context = (DBusGMethodInvocation *) user_data;
+    GHashTable *props;
+    MMModemIpMethod method = MM_MODEM_IP_METHOD_PPP;
+    char buf[INET_ADDRSTRLEN + 1];
+    guint32 num;
+
+    if (error) {
+        dbus_g_method_return_error (context, error);
+        return;
+    }
+
+    props = value_hash_new ();
+    g_object_get (G_OBJECT (modem), MM_MODEM_IP_METHOD, &method, NULL);
+    value_hash_add_uint (props, "method", method);
+
+    if (method == MM_MODEM_IP_METHOD_STATIC) {
+        g_assert (address);
+        g_assert (netmask);
+
+        if (address) {
+            if (inet_ntop (AF_INET, (void *) &address, buf, sizeof (buf) - 1))
+                value_hash_add_string (props, "address", buf);
+            else
+                mm_warn ("Failed to convert IP address 0x%04X", address);
+        }
+
+        if (netmask)
+            value_hash_add_uint (props, "prefix", _ip4_netmask_to_prefix (netmask));
+
+        if (gateway) {
+            if (inet_ntop (AF_INET, (void *) &gateway, buf, sizeof (buf) - 1))
+                value_hash_add_string (props, "gateway", buf);
+            else
+                mm_warn ("Failed to convert IP gateway 0x%04X", gateway);
+        }
+
+        if (dns->len >= 1) {
+            num = g_array_index (dns, guint32, 0);
+            if (num) {
+                if (inet_ntop (AF_INET, (void *) &num, buf, sizeof (buf) - 1))
+                    value_hash_add_string (props, "dns1", buf);
+                else
+                    mm_warn ("Failed to convert IP DNS1 0x%04X", num);
+            }
+        }
+
+        if (dns->len >= 2) {
+            num = g_array_index (dns, guint32, 1);
+            if (num) {
+                if (inet_ntop (AF_INET, (void *) &num, buf, sizeof (buf) - 1))
+                    value_hash_add_string (props, "dns2", buf);
+                else
+                    mm_warn ("Failed to convert IP DNS2 0x%04X", num);
+            }
+        }
+    }
+
+    dbus_g_method_return (context, props);
+    g_hash_table_unref (props);
+}
+
+static void
+impl_modem_get_ip4_config_ex (MMModem *modem,
+                              DBusGMethodInvocation *context)
+{
+    mm_modem_get_ip4_config (modem, get_ip4_ex_done, context);
 }
 
 void
