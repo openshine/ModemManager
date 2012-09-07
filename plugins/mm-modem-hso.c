@@ -548,8 +548,13 @@ get_ip4_config_done (MMAtSerialPort *port,
                 break;
             }
         } else if (i == 1) { /* IP address */
-            if (inet_pton (AF_INET, *iter, &tmp) > 0)
+            if (inet_pton (AF_INET, *iter, &tmp) > 0) {
                 mm_callback_info_set_data (info, "ip4-address", GUINT_TO_POINTER (tmp), NULL);
+                mm_callback_info_set_data (info, "ip4-netmask", GUINT_TO_POINTER (0xFFFFFF), NULL);
+            }
+        } else if (i == 2) { /* Gateway */
+            if (inet_pton (AF_INET, *iter, &tmp) > 0)
+                mm_callback_info_set_data (info, "ip4-gateway", GUINT_TO_POINTER (tmp), NULL);
         } else if (i == 3) { /* DNS 1 */
             if (inet_pton (AF_INET, *iter, &tmp) > 0)
                 g_array_append_val (dns_array, tmp);
