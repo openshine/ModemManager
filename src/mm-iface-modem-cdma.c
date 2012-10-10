@@ -1756,7 +1756,7 @@ interface_initialization_step (InitializationContext *ctx)
         /* Initial activation state is meant to be loaded only once during the
          * whole lifetime of the modem. Therefore, if we already have it loaded,
          * don't try to load it again. */
-        if (mm_gdbus_modem_cdma_get_activation_state (ctx->skeleton) != MM_MODEM_CDMA_ACTIVATION_STATE_UNKNOWN &&
+        if (mm_gdbus_modem_cdma_get_activation_state (ctx->skeleton) == MM_MODEM_CDMA_ACTIVATION_STATE_UNKNOWN &&
             MM_IFACE_MODEM_CDMA_GET_INTERFACE (ctx->self)->load_activation_state &&
             MM_IFACE_MODEM_CDMA_GET_INTERFACE (ctx->self)->load_activation_state_finish) {
             MM_IFACE_MODEM_CDMA_GET_INTERFACE (ctx->self)->load_activation_state (
