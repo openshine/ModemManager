@@ -331,14 +331,12 @@ get_current_settings_ready (QmiClientWds *client,
     g_assert (!(ctx->running_ipv4 && ctx->running_ipv6));
 
     output = qmi_client_wds_get_current_settings_finish (client, res, &error);
-    if (output &&
+    if (!output ||
         !qmi_message_wds_get_current_settings_output_get_result (output, &error)) {
+        /* Never treat this as a hard connection error; not all devices support
+         * "WDS Get Current Settings" */
         mm_info ("error: couldn't get current settings: %s", error->message);
-    }
-
-    if (error) {
-        /* FIXME: handle errors by tearing down the session? */
-        g_clear_error (&error);
+        g_error_free (error);
     } else {
         gboolean success;
         guint32 addr, mtu, i;
