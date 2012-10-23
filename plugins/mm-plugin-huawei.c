@@ -11,7 +11,7 @@
  * GNU General Public License for more details:
  *
  * Copyright (C) 2008 - 2009 Novell, Inc.
- * Copyright (C) 2009 Red Hat, Inc.
+ * Copyright (C) 2009 - 2012 Red Hat, Inc.
  */
 
 #include <string.h>
@@ -31,6 +31,7 @@
 #include "mm-at-serial-port.h"
 #include "mm-log.h"
 #include "mm-errors.h"
+#include "mm-modem-helpers.h"
 
 G_DEFINE_TYPE (MMPluginHuawei, mm_plugin_huawei, MM_TYPE_PLUGIN_BASE)
 
@@ -50,6 +51,9 @@ mm_plugin_create (void)
 #define TAG_HUAWEI_PCUI_PORT "huawei-pcui-port"
 #define TAG_HUAWEI_MODEM_PORT "huawei-modem-port"
 #define TAG_HUAWEI_DIAG_PORT "huawei-diag-port"
+#define TAG_HUAWEI_NDIS_PORT "huawei-ndis-port"
+#define TAG_HUAWEI_U2_NDIS_DISABLED "huawei-u2-ndis-disabled"
+#define TAG_HUAWEI_SP_NDIS_DISABLED "huawei-sp-ndis-disabled"
 #define TAG_GETPORTMODE_SUPPORTED "getportmode-supported"
 
 #define CAP_CDMA (MM_PLUGIN_BASE_PORT_CAP_IS707_A | \
@@ -76,6 +80,81 @@ probe_result (MMPluginBase *base,
               gpointer user_data)
 {
     mm_plugin_base_supports_task_complete (task, get_level_for_capabilities (capabilities));
+}
+
+static gboolean
+setport_response_cb (MMPluginBaseSupportsTask *task,
+                     GString *response,
+                     GError *error,
+                     guint32 tries,
+                     gboolean *out_stop,
+                     guint32 *out_level,
+                     gpointer user_data)
+{
+    MMPlugin *plugin = mm_plugin_base_supports_task_get_plugin (task);
+    const char *s;
+
+    /* Skip SETPORT if GETPORTMODE isn't supported */
+    if (!g_object_get_data (G_OBJECT (plugin), TAG_GETPORTMODE_SUPPORTED))
+        return FALSE;
+
+    /* If any error occurred that was not ERROR or COMMAND NOT SUPPORT then
+     * retry the command.
+     */
+    if (error) {
+        if (g_error_matches (error, MM_MOBILE_ERROR, MM_MOBILE_ERROR_UNKNOWN) == FALSE)
+            return tries <= 2 ? TRUE : FALSE;
+    } else if (response && response->str) {
+        s = mm_strip_tag (response->str, "^SETPORT:");
+        if (!strstr (s, ";7") && !strstr (s, ",7") && !strstr (s, "; 7")) {
+            mm_dbg ("(%s): ^SETPORT reports NDIS port not enabled", mm_plugin_get_name (plugin));
+            g_object_set_data (G_OBJECT (plugin), TAG_HUAWEI_SP_NDIS_DISABLED, GUINT_TO_POINTER (1));
+        } else
+            mm_dbg ("(%s): ^SETPORT reports NDIS port is enabled", mm_plugin_get_name (plugin));
+    }
+
+    /* No error or if ^SETPORT is not supported, assume success */
+    return FALSE;
+}
+
+static gboolean
+u2diag_response_cb (MMPluginBaseSupportsTask *task,
+                    GString *response,
+                    GError *error,
+                    guint32 tries,
+                    gboolean *out_stop,
+                    guint32 *out_level,
+                    gpointer user_data)
+{
+    MMPlugin *plugin = mm_plugin_base_supports_task_get_plugin (task);
+    const char *s;
+    unsigned long tmp = 0;
+
+    /* Skip U2DIAG if GETPORTMODE isn't supported */
+    if (!g_object_get_data (G_OBJECT (plugin), TAG_GETPORTMODE_SUPPORTED))
+        return FALSE;
+
+    /* If any error occurred that was not ERROR or COMMAND NOT SUPPORT then
+     * retry the command.
+     */
+    if (error) {
+        if (g_error_matches (error, MM_MOBILE_ERROR, MM_MOBILE_ERROR_UNKNOWN) == FALSE)
+            return tries <= 2 ? TRUE : FALSE;
+    } else if (response && response->str) {
+        s = mm_strip_tag (response->str, "^U2DIAG:");
+        if (s) {
+            errno = 0;
+            tmp = strtoul (s, NULL, 10);
+            if (   errno == 0 && tmp != 5 && tmp != 9 && tmp != 12 && tmp != 255 && tmp != 261
+                && tmp != 265 && tmp != 267 && tmp != 276) {
+                mm_dbg ("(%s): ^U2DIAG reports NDIS port not enabled", mm_plugin_get_name (plugin));
+                g_object_set_data (G_OBJECT (plugin), TAG_HUAWEI_U2_NDIS_DISABLED, GINT_TO_POINTER (1));
+            }
+        }
+    }
+
+    /* No error or if ^U2DIAG is not supported, assume success */
+    return FALSE;
 }
 
 static void
@@ -116,6 +195,7 @@ getportmode_response_cb (MMPluginBaseSupportsTask *task,
         cache_port_mode (plugin, response->str, "PCUI:", TAG_HUAWEI_PCUI_PORT);
         cache_port_mode (plugin, response->str, "MDM:", TAG_HUAWEI_MODEM_PORT);
         cache_port_mode (plugin, response->str, "DIAG:", TAG_HUAWEI_DIAG_PORT);
+        cache_port_mode (plugin, response->str, "NDIS:", TAG_HUAWEI_NDIS_PORT);
 
         g_object_set_data (G_OBJECT (plugin), TAG_GETPORTMODE_SUPPORTED, GUINT_TO_POINTER (1));
     }
@@ -240,6 +320,20 @@ supports_port (MMPluginBase *base,
                                                               3,   /* delay */
                                                               getportmode_response_cb,
                                                               NULL);
+
+        /* Not all devices support querying U2DIAG, but try if we can */
+        mm_plugin_base_supports_task_add_custom_init_command (task,
+                                                              "AT^U2DIAG?",
+                                                              3,   /* delay */
+                                                              u2diag_response_cb,
+                                                              NULL);
+
+        /* Many newer devices support SETPORT */
+        mm_plugin_base_supports_task_add_custom_init_command (task,
+                                                              "AT^SETPORT?",
+                                                              3,   /* delay */
+                                                              setport_response_cb,
+                                                              NULL);
     }
 
     /* Kick off a probe */
@@ -261,7 +355,7 @@ grab_port (MMPluginBase *base,
     guint32 caps;
     guint16 vendor = 0, product = 0;
     MMPortType ptype;
-    int usbif;
+    int usbif, pcui = 0, mdm = 0, ndis = 0;
     MMAtPortFlags pflags = MM_AT_PORT_FLAG_NONE;
 
     port = mm_plugin_base_supports_task_get_port (task);
@@ -290,11 +384,25 @@ grab_port (MMPluginBase *base,
     caps = mm_plugin_base_supports_task_get_probed_capabilities (task);
     ptype = mm_plugin_base_probed_capabilities_to_port_type (caps);
 
-    if (usbif + 1 == GPOINTER_TO_INT (g_object_get_data (G_OBJECT (base), TAG_HUAWEI_PCUI_PORT)))
+    pcui = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (base), TAG_HUAWEI_PCUI_PORT));
+    mdm = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (base), TAG_HUAWEI_MODEM_PORT));
+    ndis = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (base), TAG_HUAWEI_NDIS_PORT));
+
+    if (usbif + 1 == pcui)
         pflags = MM_AT_PORT_FLAG_PRIMARY;
-    else if (usbif + 1 == GPOINTER_TO_INT (g_object_get_data (G_OBJECT (base), TAG_HUAWEI_MODEM_PORT)))
+    else if (usbif + 1 == mdm)
         pflags = MM_AT_PORT_FLAG_PPP;
-    else if (!g_object_get_data (G_OBJECT (base), TAG_GETPORTMODE_SUPPORTED)) {
+    else if (usbif + 1 == ndis && (mdm == 0)) {
+        /* Some devices (E173) appear to lie about NDIS support; GETPORTMODE
+         * reports NDIS is enabled, but that port is actually the MDM port and
+         * responds to AT commands.  So if we have an NDIS port but no MDM port,
+         * and SETPORT or U2DIAG report NDIS is disabled, assume the NDIS port
+         * is the MDM port. (lp:1057186)
+         */
+        if (   g_object_get_data (G_OBJECT (base), TAG_HUAWEI_U2_NDIS_DISABLED)
+            || g_object_get_data (G_OBJECT (base), TAG_HUAWEI_SP_NDIS_DISABLED))
+            pflags = MM_AT_PORT_FLAG_PPP;
+    } else if (!g_object_get_data (G_OBJECT (base), TAG_GETPORTMODE_SUPPORTED)) {
         /* If GETPORTMODE is not supported, we assume usbif 0 is the modem port */
         if ((usbif == 0) && (ptype == MM_PORT_TYPE_AT)) {
             pflags = MM_AT_PORT_FLAG_PPP;
