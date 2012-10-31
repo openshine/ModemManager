@@ -4313,9 +4313,20 @@ common_process_serving_system_cdma (MMBroadbandModemQmi *self,
     /* Note: don't update access technologies with the ones retrieved here; they
      * are not really the 'current' access technologies */
 
+    /* Longitude and latitude given in units of 0.25 secs
+     * Note that multiplying by 0.25 is like dividing by 4, so 60*60*4=14400 */
+#define QMI_LONGITUDE_TO_DEGREES(longitude)       \
+    (longitude != MM_LOCATION_LONGITUDE_UNKNOWN ? \
+     (((gdouble)longitude) / 14400.0) :           \
+     MM_LOCATION_LONGITUDE_UNKNOWN)
+#define QMI_LATITUDE_TO_DEGREES(latitude)         \
+    (latitude != MM_LOCATION_LATITUDE_UNKNOWN ?   \
+     (((gdouble)latitude) / 14400.0) :            \
+     MM_LOCATION_LATITUDE_UNKNOWN)
+
     mm_iface_modem_location_cdma_bs_update (MM_IFACE_MODEM_LOCATION (self),
-                                            bs_longitude,
-                                            bs_latitude);
+                                            QMI_LONGITUDE_TO_DEGREES (bs_longitude),
+                                            QMI_LATITUDE_TO_DEGREES (bs_latitude));
 }
 
 static void
