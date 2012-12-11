@@ -67,10 +67,11 @@ struct _MMModemGsmNetwork {
                   MMModemGsmNetworkScanFn callback,
                   gpointer user_data);
 
-    void (*set_apn) (MMModemGsmNetwork *self,
-                     const char *apn,
-                     MMModemFn callback,
-                     gpointer user_data);
+    void (*set_bearer_properties) (MMModemGsmNetwork *self,
+                                   const char *apn,
+                                   MMModemIpType ip_type,
+                                   MMModemFn callback,
+                                   gpointer user_data);
 
     void (*get_signal_quality) (MMModemGsmNetwork *self,
                                 MMModemUIntFn callback,
@@ -115,10 +116,11 @@ void mm_modem_gsm_network_scan (MMModemGsmNetwork *self,
                                 MMModemGsmNetworkScanFn callback,
                                 gpointer user_data);
 
-void mm_modem_gsm_network_set_apn (MMModemGsmNetwork *self,
-                                   const char *apn,
-                                   MMModemFn callback,
-                                   gpointer user_data);
+void mm_modem_gsm_network_set_bearer_properties (MMModemGsmNetwork *self,
+                                                 const char *apn,
+                                                 MMModemIpType ip_type,
+                                                 MMModemFn callback,
+                                                 gpointer user_data);
 
 void mm_modem_gsm_network_get_signal_quality (MMModemGsmNetwork *self,
                                               MMModemUIntFn callback,

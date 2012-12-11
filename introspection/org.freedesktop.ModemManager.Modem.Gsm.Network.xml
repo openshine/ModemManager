@@ -61,13 +61,29 @@
 
     <method name="SetApn">
       <tp:docstring>
-        Set the APN.
+        Set the APN.  (deprecated, use SetBearerProperties instead)
       </tp:docstring>
       <annotation name="org.freedesktop.DBus.GLib.Async" value=""/>
       <annotation name="org.freedesktop.DBus.GLib.CSymbol" value="impl_gsm_modem_set_apn"/>
       <arg name="apn" type="s" direction="in">
         <tp:docstring>
           The APN.
+        </tp:docstring>
+      </arg>
+    </method>
+
+    <method name="SetBearerProperties">
+      <tp:docstring>
+        Set details of the bearer context, like APN and IP type.
+      </tp:docstring>
+      <annotation name="org.freedesktop.DBus.GLib.Async" value=""/>
+      <annotation name="org.freedesktop.DBus.GLib.CSymbol" value="impl_gsm_modem_set_bearer_properties"/>
+      <arg name="properties" type="a{sv}" direction="in">
+        <tp:docstring>
+          Dictionary of bearer properties.  Allowed properties are:
+
+          'apn'          : string (required)
+          'ip-type'      : string (GSM/HSPA only) ("v4" - IPv4 only, "v6" = IPv6 only, "v4v6" = dual-stack)
         </tp:docstring>
       </arg>
     </method>

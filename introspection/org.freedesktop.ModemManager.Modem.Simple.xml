@@ -23,6 +23,7 @@
           'number'       : string
           'rm-protocol'  : uint (CDMA/EVDO only) (1 - Relay, 2 - Network PPP)
           'allowed_auth' : uint (GSM/HSPA only) (MM_MODEM_GSM_ALLOWED_AUTH bitfield)
+          'ip-type'      : string (GSM/HSPA only) ("v4" - IPv4 only, "v6" = IPv6 only, "v4v6" = dual-stack)
         </tp:docstring>
       </arg>
     </method>

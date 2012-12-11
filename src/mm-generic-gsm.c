@@ -78,7 +78,10 @@ typedef struct {
 
     char *oper_code;
     char *oper_name;
+
     guint32 ip_method;
+    MMModemIpType supported_ip_types;
+    MMModemIpType cur_ip_type;
 
     GPtrArray *reg_regex;
 
@@ -1708,6 +1711,30 @@ cind_cb (MMAtSerialPort *port,
 }
 
 static void
+supported_ip_types_cb (MMAtSerialPort *port,
+                       GString *response,
+                       GError *error,
+                       gpointer user_data)
+{
+    if (!error) {
+        MMGenericGsmPrivate *priv = MM_GENERIC_GSM_GET_PRIVATE (user_data);
+
+        if (strstr (response->str, "\"IP\""))
+            priv->supported_ip_types |= MM_MODEM_IP_TYPE_IPV4;
+        if (strstr (response->str, "\"IPV6\""))
+            priv->supported_ip_types |= MM_MODEM_IP_TYPE_IPV6;
+        if (strstr (response->str, "\"IPV4V6\""))
+            priv->supported_ip_types |= MM_MODEM_IP_TYPE_IPV4V6;
+
+        /* Option GIO322 format */
+        if (strstr (response->str, "\"IP_V6\""))
+            priv->supported_ip_types |= MM_MODEM_IP_TYPE_IPV6;
+
+        g_object_notify (G_OBJECT (user_data), MM_MODEM_SUPPORTED_IP_TYPES);
+    }
+}
+
+static void
 cusd_enable_cb (MMAtSerialPort *port,
                 GString *response,
                 GError *error,
@@ -1949,6 +1976,8 @@ mm_generic_gsm_enable_complete (MMGenericGsm *self,
 
     mm_at_serial_port_queue_command (priv->primary, "+CIND=?", 3, cind_cb, self);
 
+    mm_at_serial_port_queue_command (priv->primary, "+CGDCONT=?", 3, supported_ip_types_cb, self);
+
     /* Try one more time to get the SIM ID */
     if (!priv->simid)
         MM_GENERIC_GSM_GET_CLASS (self)->get_sim_iccid (self, get_iccid_done, NULL);
@@ -2122,6 +2151,7 @@ enable (MMModem *modem,
 
     /* First, reset the previously used CID */
     priv->cid = -1;
+    priv->cur_ip_type = MM_MODEM_IP_TYPE_UNKNOWN;
 
     if (!mm_serial_port_open (MM_SERIAL_PORT (priv->primary), &error)) {
         MMCallbackInfo *info;
@@ -2275,6 +2305,7 @@ disable (MMModem *modem,
     /* First, reset the previously used CID and clean up registration */
     g_warn_if_fail (priv->cid == -1);
     priv->cid = -1;
+    priv->cur_ip_type = MM_MODEM_IP_TYPE_UNKNOWN;
 
     mm_generic_gsm_pending_registration_stop (MM_GENERIC_GSM (modem));
 
@@ -3929,6 +3960,7 @@ disconnect_done (MMModem *modem,
     } else {
         mm_port_set_connected (priv->data, FALSE);
         priv->cid = -1;
+        priv->cur_ip_type = MM_MODEM_IP_TYPE_UNKNOWN;
         mm_generic_gsm_update_enabled_state (MM_GENERIC_GSM (modem), FALSE, MM_MODEM_STATE_REASON_NONE);
     }
 
@@ -4173,11 +4205,23 @@ scan (MMModemGsmNetwork *modem,
 
 #define APN_CID_TAG "generic-gsm-cid"
 
+static const char *
+ip_type_to_string (MMModemIpType ip_type)
+{
+    if (ip_type == MM_MODEM_IP_TYPE_IPV4)
+        return "IP";
+    if (ip_type == MM_MODEM_IP_TYPE_IPV6)
+        return "IPV6";
+    if (ip_type == MM_MODEM_IP_TYPE_IPV4V6)
+        return "IPV4V6";
+    return NULL;
+}
+
 static void
-set_apn_done (MMAtSerialPort *port,
-              GString *response,
-              GError *error,
-              gpointer user_data)
+set_bearer_properties_done (MMAtSerialPort *port,
+                            GString *response,
+                            GError *error,
+                            gpointer user_data)
 {
     MMCallbackInfo *info = (MMCallbackInfo *) user_data;
 
@@ -4192,6 +4236,7 @@ set_apn_done (MMAtSerialPort *port,
         MMGenericGsmPrivate *priv = MM_GENERIC_GSM_GET_PRIVATE (info->modem);
 
         priv->cid = GPOINTER_TO_INT (mm_callback_info_get_data (info, APN_CID_TAG));
+        priv->cur_ip_type = GPOINTER_TO_UINT (mm_callback_info_get_data (info, "ip-type"));
     }
 
     mm_callback_info_schedule (info);
@@ -4205,11 +4250,15 @@ cid_range_read (MMAtSerialPort *port,
 {
     MMCallbackInfo *info = (MMCallbackInfo *) user_data;
     guint32 cid = 0;
+    const char *ip_type_str;
 
     /* If the modem has already been removed, return without
      * scheduling callback */
     if (mm_callback_info_check_modem_removed (info))
         return;
+
+    ip_type_str = (const char *) mm_callback_info_get_data (info, "ip-type-str");
+    g_assert (ip_type_str);
 
     if (error)
         info->error = g_error_copy (error);
@@ -4227,7 +4276,7 @@ cid_range_read (MMAtSerialPort *port,
             char *tmp;
 
             tmp = g_match_info_fetch (match_info, 3);
-            if (!strcmp (tmp, "IP")) {
+            if (!strcmp (tmp, ip_type_str)) {
                 int max_cid;
                 int highest_cid = GPOINTER_TO_INT (mm_callback_info_get_data (info, "highest-cid"));
 
@@ -4266,8 +4315,8 @@ cid_range_read (MMAtSerialPort *port,
 
         mm_callback_info_set_data (info, APN_CID_TAG, GINT_TO_POINTER (cid), NULL);
 
-        command = g_strdup_printf ("+CGDCONT=%d,\"IP\",\"%s\"", cid, apn);
-        mm_at_serial_port_queue_command (port, command, 3, set_apn_done, info);
+        command = g_strdup_printf ("+CGDCONT=%d,\"%s\",\"%s\"", cid, ip_type_str, apn);
+        mm_at_serial_port_queue_command (port, command, 3, set_bearer_properties_done, info);
         g_free (command);
     }
 }
@@ -4297,6 +4346,7 @@ existing_apns_read (MMAtSerialPort *port,
         GRegex *r;
         GMatchInfo *match_info;
         const char *new_apn;
+        const char *ip_type_str;
 
         r = g_regex_new ("\\+CGDCONT:\\s*(\\d+)\\s*,\"(\\S+)\",\"(\\S+)\",\"(\\S*)\"",
                          G_REGEX_DOLLAR_ENDONLY | G_REGEX_RAW,
@@ -4304,33 +4354,34 @@ existing_apns_read (MMAtSerialPort *port,
         g_assert (r);
 
         new_apn = (const char *) mm_callback_info_get_data (info, "apn");
+        ip_type_str = (const char *) mm_callback_info_get_data (info, "ip-type-str");
+        g_assert (ip_type_str);
 
         g_regex_match_full (r, response->str, response->len, 0, 0, &match_info, &info->error);
         while (!found && g_match_info_matches (match_info)) {
             char *cid;
             char *pdp_type;
             char *apn;
-            int num_cid;
+            int num_cid, highest_cid;
 
             cid = g_match_info_fetch (match_info, 1);
             num_cid = atoi (cid);
+            g_free (cid);
+
             pdp_type = g_match_info_fetch (match_info, 2);
             apn = g_match_info_fetch (match_info, 3);
 
-            if (!strcmp (apn, new_apn)) {
+            if (!strcmp (apn, new_apn) && !strcmp (pdp_type, ip_type_str)) {
                 MM_GENERIC_GSM_GET_PRIVATE (info->modem)->cid = num_cid;
                 found = TRUE;
             }
 
-            if (!found && !strcmp (pdp_type, "IP")) {
-                int highest_cid;
-
+            if (!found) {
                 highest_cid = GPOINTER_TO_INT (mm_callback_info_get_data (info, "highest-cid"));
                 if (num_cid > highest_cid)
                     mm_callback_info_set_data (info, "highest-cid", GINT_TO_POINTER (num_cid), NULL);
             }
 
-            g_free (cid);
             g_free (pdp_type);
             g_free (apn);
             g_match_info_next (match_info, NULL);
@@ -4354,16 +4405,33 @@ existing_apns_read (MMAtSerialPort *port,
 }
 
 static void
-set_apn (MMModemGsmNetwork *modem,
-         const char *apn,
-         MMModemFn callback,
-         gpointer user_data)
+set_bearer_properties (MMModemGsmNetwork *modem,
+                       const char *apn,
+                       MMModemIpType ip_type,
+                       MMModemFn callback,
+                       gpointer user_data)
 {
     MMGenericGsmPrivate *priv = MM_GENERIC_GSM_GET_PRIVATE (modem);
     MMCallbackInfo *info;
+    const char *ip_type_str;
 
     info = mm_callback_info_new (MM_MODEM (modem), callback, user_data);
     mm_callback_info_set_data (info, "apn", g_strdup (apn), g_free);
+    mm_callback_info_set_data (info, "ip-type", GUINT_TO_POINTER (ip_type), NULL);
+
+    ip_type_str = ip_type_to_string (ip_type);
+    g_assert (ip_type_str);
+    mm_callback_info_set_data (info, "ip-type-str", (gpointer) ip_type_str, NULL);
+
+    /* Ensure the IP type is supported by the modem */
+    if (ip_type != (ip_type & priv->supported_ip_types)) {
+        info->error = g_error_new (MM_MODEM_ERROR,
+                                   MM_MODEM_ERROR_OPERATION_NOT_SUPPORTED,
+                                   "IP type %s not supported by device.",
+                                   ip_type_str);
+        mm_callback_info_schedule (info);
+        return;
+    }
 
     /* Start by searching if the APN is already in card */
     mm_at_serial_port_queue_command (priv->primary, "+CGDCONT?", 3, existing_apns_read, info);
@@ -6151,6 +6219,30 @@ simple_get_bool_property (MMCallbackInfo *info, const char *name, gboolean *out_
     return simple_get_property (info, name, G_TYPE_BOOLEAN, NULL, NULL, out_val, error);
 }
 
+static MMModemIpType
+simple_get_ip_type (MMCallbackInfo *info, GError **error)
+{
+    const char *str = NULL;
+
+    str = simple_get_string_property (info, "ip-type", error);
+    if (!str)
+        return MM_MODEM_IP_TYPE_IPV4;
+
+    if (strcasecmp (str, "v4") == 0)
+        return MM_MODEM_IP_TYPE_IPV4;
+    if (strcasecmp (str, "v6") == 0)
+        return MM_MODEM_IP_TYPE_IPV6;
+    if (strcasecmp (str, "v4v6") == 0)
+        return MM_MODEM_IP_TYPE_IPV4V6;
+
+    g_set_error (error,
+                 MM_MODEM_ERROR,
+                 MM_MODEM_ERROR_OPERATION_NOT_SUPPORTED,
+                 "Invalid IP type '%s'",
+                 str);
+    return MM_MODEM_IP_TYPE_UNKNOWN;
+}
+
 static gboolean
 simple_get_allowed_mode (MMCallbackInfo *info,
                          MMModemGsmAllowedMode *out_mode,
@@ -6264,9 +6356,14 @@ simple_state_machine (MMModem *modem, GError *error, gpointer user_data)
     case SIMPLE_STATE_SET_APN:
         next_state = SIMPLE_STATE_CONNECT;
         str = simple_get_string_property (info, "apn", &info->error);
-        if (str || info->error) {
-            if (str)
-                mm_modem_gsm_network_set_apn (MM_MODEM_GSM_NETWORK (modem), str, simple_state_machine, info);
+        if (info->error)
+            break;
+        if (str) {
+            MMModemIpType ip_type;
+
+            ip_type = simple_get_ip_type (info, &info->error);
+            if (ip_type != MM_MODEM_IP_TYPE_UNKNOWN)
+                mm_modem_gsm_network_set_bearer_properties (MM_MODEM_GSM_NETWORK (modem), str, ip_type, simple_state_machine, info);
             break;
         }
         /* Fall through if no APN or no 'apn' property error */
@@ -6685,7 +6782,7 @@ modem_gsm_network_init (MMModemGsmNetwork *class)
     class->do_register = do_register;
     class->get_registration_info = get_registration_info;
     class->set_allowed_mode = set_allowed_mode;
-    class->set_apn = set_apn;
+    class->set_bearer_properties = set_bearer_properties;
     class->scan = scan;
     class->get_signal_quality = get_signal_quality;
 }
@@ -6724,6 +6821,7 @@ mm_generic_gsm_init (MMGenericGsm *self)
     priv->act = MM_MODEM_GSM_ACCESS_TECH_UNKNOWN;
     priv->reg_regex = mm_gsm_creg_regex_get (TRUE);
     priv->roam_allowed = TRUE;
+    priv->supported_ip_types = MM_MODEM_IP_TYPE_IPV4;
     priv->sms_present = g_hash_table_new (g_direct_hash, g_direct_equal);
     priv->sms_contents = g_hash_table_new (g_direct_hash, g_direct_equal);
     priv->sms_parts = g_hash_table_new (g_direct_hash, g_direct_equal);
@@ -6819,6 +6917,7 @@ set_property (GObject *object, guint prop_id,
     case MM_GENERIC_GSM_PROP_SMS_STORAGE_LOCATION_CMD:
     case MM_GENERIC_GSM_PROP_CMER_ENABLE_CMD:
     case MM_GENERIC_GSM_PROP_PS_NETWORK_SUPPORTED:
+    case MM_GENERIC_GSM_PROP_SUPPORTED_IP_TYPES:
         break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -6950,6 +7049,9 @@ get_property (GObject *object, guint prop_id,
     case MM_GENERIC_GSM_PROP_PS_NETWORK_SUPPORTED:
         g_value_set_boolean (value, TRUE);
         break;
+    case MM_GENERIC_GSM_PROP_SUPPORTED_IP_TYPES:
+        g_value_set_uint (value, priv->supported_ip_types);
+        break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
         break;
@@ -7078,6 +7180,10 @@ mm_generic_gsm_class_init (MMGenericGsmClass *generic_class)
     g_object_class_override_property (object_class,
                                       MM_GENERIC_GSM_PROP_USSD_NETWORK_REQUEST,
                                       MM_MODEM_GSM_USSD_NETWORK_REQUEST);
+
+    g_object_class_override_property (object_class,
+                                      MM_GENERIC_GSM_PROP_SUPPORTED_IP_TYPES,
+                                      MM_MODEM_SUPPORTED_IP_TYPES);
 
     g_object_class_install_property
         (object_class, MM_GENERIC_GSM_PROP_POWER_UP_CMD,

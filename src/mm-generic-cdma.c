@@ -2608,6 +2608,8 @@ set_property (GObject *object, guint prop_id,
     case PROP_REG_TRY_CAD:
         priv->reg_try_cad = g_value_get_boolean (value);
         break;
+    case MM_MODEM_PROP_SUPPORTED_IP_TYPES:
+        break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
         break;
@@ -2629,6 +2631,9 @@ get_property (GObject *object, guint prop_id,
         break;
     case MM_MODEM_PROP_TYPE:
         g_value_set_uint (value, MM_MODEM_TYPE_CDMA);
+        break;
+    case MM_MODEM_PROP_SUPPORTED_IP_TYPES:
+        g_value_set_uint (value, MM_MODEM_IP_TYPE_IPV4);
         break;
     case MM_MODEM_CDMA_PROP_MEID:
         g_value_set_string (value, priv->meid);
@@ -2693,6 +2698,10 @@ mm_generic_cdma_class_init (MMGenericCdmaClass *generic_class)
     g_object_class_override_property (object_class,
                                       MM_MODEM_CDMA_PROP_MEID,
                                       MM_MODEM_CDMA_MEID);
+
+    g_object_class_override_property (object_class,
+                                      MM_MODEM_PROP_SUPPORTED_IP_TYPES,
+                                      MM_MODEM_SUPPORTED_IP_TYPES);
 
     g_object_class_install_property (object_class, PROP_EVDO_REV0,
             g_param_spec_boolean (MM_GENERIC_CDMA_EVDO_REV0,

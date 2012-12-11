@@ -34,6 +34,10 @@ static void impl_gsm_modem_set_apn (MMModemGsmNetwork *modem,
                                     const char *apn,
                                     DBusGMethodInvocation *context);
 
+static void impl_gsm_modem_set_bearer_properties (MMModemGsmNetwork *modem,
+                                                  GHashTable *properties,
+                                                  DBusGMethodInvocation *context);
+
 static void impl_gsm_modem_get_signal_quality (MMModemGsmNetwork *modem,
                                                DBusGMethodInvocation *context);
 
@@ -297,17 +301,31 @@ mm_modem_gsm_network_scan (MMModemGsmNetwork *self,
 }
 
 void
-mm_modem_gsm_network_set_apn (MMModemGsmNetwork *self,
-                              const char *apn,
-                              MMModemFn callback,
-                              gpointer user_data)
+mm_modem_gsm_network_set_bearer_properties (MMModemGsmNetwork *self,
+                                            const char *apn,
+                                            MMModemIpType ip_type,
+                                            MMModemFn callback,
+                                            gpointer user_data)
 {
+    MMCallbackInfo *info;
+
     g_return_if_fail (MM_IS_MODEM_GSM_NETWORK (self));
     g_return_if_fail (apn != NULL);
     g_return_if_fail (callback != NULL);
 
-    if (MM_MODEM_GSM_NETWORK_GET_INTERFACE (self)->set_apn)
-        MM_MODEM_GSM_NETWORK_GET_INTERFACE (self)->set_apn (self, apn, callback, user_data);
+    if (   ip_type != MM_MODEM_IP_TYPE_IPV4
+        && ip_type != MM_MODEM_IP_TYPE_IPV6
+        && ip_type != MM_MODEM_IP_TYPE_IPV4V6) {
+        info = mm_callback_info_new (MM_MODEM (self), callback, user_data);
+        info->error = g_error_new (MM_MODEM_ERROR,
+                                   MM_MODEM_ERROR_OPERATION_NOT_SUPPORTED,
+                                   "Invalid IP type 0x%x", ip_type);
+        mm_callback_info_schedule (info);
+        return;
+    }
+
+    if (MM_MODEM_GSM_NETWORK_GET_INTERFACE (self)->set_bearer_properties)
+        MM_MODEM_GSM_NETWORK_GET_INTERFACE (self)->set_bearer_properties (self, apn, ip_type, callback, user_data);
     else
         async_call_not_supported (self, callback, user_data);
 }
@@ -466,7 +484,46 @@ impl_gsm_modem_set_apn (MMModemGsmNetwork *modem,
                         const char *apn,
                         DBusGMethodInvocation *context)
 {
-    mm_modem_gsm_network_set_apn (modem, apn, async_call_done, context);
+    mm_modem_gsm_network_set_bearer_properties (modem, apn, MM_MODEM_IP_TYPE_IPV4, async_call_done, context);
+}
+
+static void
+impl_gsm_modem_set_bearer_properties (MMModemGsmNetwork *modem,
+                                      GHashTable *properties,
+                                      DBusGMethodInvocation *context)
+{
+    GError *error = NULL;
+    const char *apn;
+    MMModemIpType ip_type = MM_MODEM_IP_TYPE_IPV4;
+    GValue *val;
+
+    /* APN */
+    val = g_hash_table_lookup (properties, "apn");
+    if (!val || !G_VALUE_HOLDS_STRING (val)) {
+        error = g_error_new_literal (MM_MODEM_ERROR,
+                                     MM_MODEM_ERROR_OPERATION_NOT_SUPPORTED,
+                                     "Invalid or missing APN");
+        dbus_g_method_return_error (context, error);
+        g_error_free (error);
+        return;
+    }
+    apn = g_value_get_string (val);
+
+    /* IP type */
+    val = g_hash_table_lookup (properties, "ip-type");
+    if (val) {
+        if (!G_VALUE_HOLDS_UINT (val)) {
+            error = g_error_new_literal (MM_MODEM_ERROR,
+                                         MM_MODEM_ERROR_OPERATION_NOT_SUPPORTED,
+                                         "Invalid 'ip-type' property type");
+            dbus_g_method_return_error (context, error);
+            g_error_free (error);
+            return;
+        }
+        ip_type = g_value_get_uint (val);
+    }
+
+    mm_modem_gsm_network_set_bearer_properties (modem, apn, ip_type, async_call_done, context);
 }
 
 static void

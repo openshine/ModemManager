@@ -1022,6 +1022,10 @@ mm_modem_base_init (MMModemBase *self)
                                                     MM_MODEM_TIME_NETWORK_TIMEZONE,
                                                     NULL,
                                                     MM_DBUS_INTERFACE_MODEM_TIME);
+    mm_properties_changed_signal_register_property (G_OBJECT (self),
+                                                    MM_MODEM_SUPPORTED_IP_TYPES,
+                                                    NULL,
+                                                    MM_DBUS_INTERFACE_MODEM);
 
     g_signal_connect (self,
                       "notify::" MM_MODEM_STATE,

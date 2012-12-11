@@ -888,6 +888,14 @@ mm_modem_init (gpointer g_iface)
 
     g_object_interface_install_property
         (g_iface,
+         g_param_spec_uint (MM_MODEM_SUPPORTED_IP_TYPES,
+                            "Supported IP types",
+                            "Supported IP typs",
+                            0, G_MAXUINT, MM_MODEM_IP_TYPE_IPV4,
+                            G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
+
+    g_object_interface_install_property
+        (g_iface,
          g_param_spec_boolean (MM_MODEM_VALID,
                                "Valid",
                                "Modem is valid",
