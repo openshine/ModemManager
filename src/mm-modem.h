@@ -103,6 +103,14 @@ typedef void (*MMModemIp4Fn) (MMModem *modem,
                               GError *error,
                               gpointer user_data);
 
+typedef void (*MMModemIp6Fn) (MMModem *modem,
+                              const char *address,
+                              guint32 prefix,
+                              const char *gateway,
+                              GPtrArray *dns,
+                              GError *error,
+                              gpointer user_data);
+
 typedef void (*MMModemInfoFn) (MMModem *modem,
                                const char *manufacturer,
                                const char *model,
@@ -159,6 +167,10 @@ struct _MMModem {
 
     void (*get_ip4_config) (MMModem *self,
                             MMModemIp4Fn callback,
+                            gpointer user_data);
+
+    void (*get_ip6_config) (MMModem *self,
+                            MMModemIp6Fn callback,
                             gpointer user_data);
 
     void (*disconnect) (MMModem *self,
@@ -247,6 +259,10 @@ void mm_modem_connect (MMModem *self,
 
 void mm_modem_get_ip4_config (MMModem *self,
                               MMModemIp4Fn callback,
+                              gpointer user_data);
+
+void mm_modem_get_ip6_config (MMModem *self,
+                              MMModemIp6Fn callback,
                               gpointer user_data);
 
 void mm_modem_disconnect (MMModem *self,

@@ -69,6 +69,24 @@
       </arg>
     </method>
 
+    <method name="GetIP6Config">
+      <tp:docstring>
+        Request the IPv6 configuration from the device.  Supported for all
+        modes (DHCP, static, PPP).
+      </tp:docstring>
+      <annotation name="org.freedesktop.DBus.GLib.Async" value=""/>
+      <annotation name="org.freedesktop.DBus.GLib.CSymbol" value="impl_modem_get_ip6_config"/>
+      <arg name="method" type="u" direction="out" tp:type="MM_MODEM_IP_METHOD">
+        IP configuration method to be used.
+      </arg>
+      <arg name="properties" type="a{sv}" direction="out">
+        Dictionary of IPv6 configuration details, including "address",
+        "prefix", "gateway", "dns1", "dns2", etc.  All IP addresses given
+        as strings; "prefix" given as a unsigned integer value.  Most values
+        are only relevant for the MM_MODEM_IP_METHOD_STATIC IPMethod.
+      </arg>
+    </method>
+
     <method name="GetInfo">
       <tp:docstring>
         Get the card information (manufacturer, modem, version).

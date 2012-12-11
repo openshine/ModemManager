@@ -31,6 +31,7 @@ static void impl_modem_connect (MMModem *modem, const char *number, DBusGMethodI
 static void impl_modem_disconnect (MMModem *modem, DBusGMethodInvocation *context);
 static void impl_modem_get_ip4_config (MMModem *modem, DBusGMethodInvocation *context);
 static void impl_modem_get_ip4_config_ex (MMModem *modem, DBusGMethodInvocation *context);
+static void impl_modem_get_ip6_config (MMModem *modem, DBusGMethodInvocation *context);
 static void impl_modem_get_info (MMModem *modem, DBusGMethodInvocation *context);
 static void impl_modem_reset (MMModem *modem, DBusGMethodInvocation *context);
 static void impl_modem_factory_reset (MMModem *modem, const char *code, DBusGMethodInvocation *context);
@@ -286,6 +287,43 @@ mm_modem_get_ip4_config (MMModem *self,
 }
 
 static void
+get_ip6_invoke (MMCallbackInfo *info)
+{
+    MMModemIp6Fn callback = (MMModemIp6Fn) info->callback;
+
+    callback (info->modem,
+              (const char *) mm_callback_info_get_data (info, "ip6-address"),
+              GPOINTER_TO_UINT (mm_callback_info_get_data (info, "ip6-prefix")),
+              (const char *) mm_callback_info_get_data (info, "ip6-gateway"),
+              (GPtrArray *) mm_callback_info_get_data (info, "ip6-dns"),
+              info->error, info->user_data);
+}
+
+void
+mm_modem_get_ip6_config (MMModem *self,
+                         MMModemIp6Fn callback,
+                         gpointer user_data)
+{
+    g_return_if_fail (MM_IS_MODEM (self));
+    g_return_if_fail (callback != NULL);
+
+    if (MM_MODEM_GET_INTERFACE (self)->get_ip6_config)
+        MM_MODEM_GET_INTERFACE (self)->get_ip6_config (self, callback, user_data);
+    else {
+        MMCallbackInfo *info;
+
+        info = mm_callback_info_new_full (self,
+                                          get_ip6_invoke,
+                                          G_CALLBACK (callback),
+                                          user_data);
+
+        info->error = g_error_new_literal (MM_MODEM_ERROR, MM_MODEM_ERROR_OPERATION_NOT_SUPPORTED,
+                                           "Operation not supported");
+        mm_callback_info_schedule (info);
+    }
+}
+
+static void
 value_array_add_uint (GValueArray *array, guint32 i)
 {
     GValue value = { 0, };
@@ -445,6 +483,63 @@ impl_modem_get_ip4_config_ex (MMModem *modem,
                               DBusGMethodInvocation *context)
 {
     mm_modem_get_ip4_config (modem, get_ip4_ex_done, context);
+}
+
+static void
+get_ip6_done (MMModem *modem,
+              const char *address,
+              guint32 prefix,
+              const char *gateway,
+              GPtrArray *dns,
+              GError *error,
+              gpointer user_data)
+{
+    DBusGMethodInvocation *context = (DBusGMethodInvocation *) user_data;
+    GHashTable *props;
+    MMModemIpMethod method = MM_MODEM_IP_METHOD_PPP;
+    const char *s;
+
+    if (error) {
+        dbus_g_method_return_error (context, error);
+        return;
+    }
+
+    props = value_hash_new ();
+    g_object_get (G_OBJECT (modem), MM_MODEM_IP_METHOD, &method, NULL);
+    value_hash_add_uint (props, "method", method);
+
+    if (method == MM_MODEM_IP_METHOD_STATIC) {
+        g_assert (address);
+        g_assert (prefix);
+
+        value_hash_add_string (props, "address", address);
+        value_hash_add_uint (props, "prefix", prefix);
+
+        if (gateway)
+            value_hash_add_string (props, "gateway", gateway);
+
+        if (dns->len >= 1) {
+            s = g_ptr_array_index (dns, 0);
+            if (s)
+                value_hash_add_string (props, "dns1", s);
+        }
+
+        if (dns->len >= 2) {
+            s = g_ptr_array_index (dns, 1);
+            if (s)
+                value_hash_add_string (props, "dns2", s);
+        }
+    }
+
+    dbus_g_method_return (context, props);
+    g_hash_table_unref (props);
+}
+
+static void
+impl_modem_get_ip6_config (MMModem *modem,
+                           DBusGMethodInvocation *context)
+{
+    mm_modem_get_ip6_config (modem, get_ip6_done, context);
 }
 
 void
