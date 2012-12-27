@@ -200,11 +200,22 @@ qmi_device_open_ready (QmiDevice *qmi_device,
     ctx->self->priv->opening = FALSE;
 
     if (!qmi_device_open_finish (qmi_device, res, &error)) {
-        g_clear_object (&ctx->self->priv->qmi_device);
-        g_simple_async_result_take_error (ctx->result, error);
-    } else
-        g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
+        /* Error may have been in the setup steps after really opening the
+         * device (e.g. during data format setting). In this case, just log
+         * the error and keep on */
+        if (!qmi_device_is_open (ctx->self->priv->qmi_device)) {
+            g_clear_object (&ctx->self->priv->qmi_device);
+            g_simple_async_result_take_error (ctx->result, error);
+            port_open_context_complete_and_free (ctx);
+            return;
+        }
 
+        /* Not critical */
+        mm_warn ("Error setting up open port: '%s'", error->message);
+        g_error_free (error);
+    }
+
+    g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
     port_open_context_complete_and_free (ctx);
 }
 
