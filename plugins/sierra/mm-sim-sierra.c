@@ -33,6 +33,82 @@
 
 G_DEFINE_TYPE (MMSimSierra, mm_sim_sierra, MM_TYPE_SIM);
 
+struct _MMSimSierraPrivate {
+    gchar *cached_pin;
+};
+
+/*****************************************************************************/
+/* Send SIM PIN */
+
+static gboolean
+send_pin_finish (MMSim *self,
+                 GAsyncResult *res,
+                 GError **error)
+{
+    return !g_simple_async_result_propagate_error (G_SIMPLE_ASYNC_RESULT (res), error);
+}
+
+static void
+parent_send_pin_ready (MMSim *_self,
+                       GAsyncResult *res,
+                       GSimpleAsyncResult *simple)
+{
+    MMSimSierra *self = MM_SIM_SIERRA (_self);
+    GError *error = NULL;
+
+    if (!MM_SIM_CLASS (mm_sim_sierra_parent_class)->send_pin_finish (_self, res, &error)) {
+        /* Clear cached PIN if sending PIN fails */
+        g_free (self->priv->cached_pin);
+        self->priv->cached_pin = NULL;
+        g_simple_async_result_take_error (simple, error);
+    } else
+        g_simple_async_result_set_op_res_gboolean (simple, TRUE);
+
+    g_simple_async_result_complete (simple);
+    g_object_unref (simple);
+}
+
+static void
+send_pin (MMSim *_self,
+          const gchar *pin,
+          GAsyncReadyCallback callback,
+          gpointer user_data)
+{
+    MMSimSierra *self = MM_SIM_SIERRA (_self);
+    GSimpleAsyncResult *result;
+
+    result = g_simple_async_result_new (G_OBJECT (self),
+                                        callback,
+                                        user_data,
+                                        send_pin);
+
+    /* We allow passing NULL pin, when we want to use the last cached one.
+     * This will only happen when re-unlocking the SIM after powering up
+     * the modem, so it means that if any PIN was introduced already,
+     * it would be the correct one. */
+    if (!pin) {
+        if (!self->priv->cached_pin) {
+            g_simple_async_result_set_error (result,
+                                             MM_CORE_ERROR,
+                                             MM_CORE_ERROR_NOT_FOUND,
+                                             "No cached PIN found");
+            g_simple_async_result_complete_in_idle (result);
+            g_object_unref (result);
+            return;
+        }
+    } else {
+        /* Update cached PIN */
+        g_free (self->priv->cached_pin);
+        self->priv->cached_pin = g_strdup (pin);
+    }
+
+    /* Call parent's PIN sending code */
+    MM_SIM_CLASS (mm_sim_sierra_parent_class)->send_pin (_self,
+                                                         self->priv->cached_pin,
+                                                         (GAsyncReadyCallback)parent_send_pin_ready,
+                                                         result);
+}
+
 /*****************************************************************************/
 /* SIM identifier loading */
 
@@ -179,13 +255,34 @@ mm_sim_sierra_new (MMBaseModem *modem,
 static void
 mm_sim_sierra_init (MMSimSierra *self)
 {
+    /* Initialize private data */
+    self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self,
+                                              MM_TYPE_SIM_SIERRA,
+                                              MMSimSierraPrivate);
+}
+
+static void
+finalize (GObject *object)
+{
+    MMSimSierra *self = MM_SIM_SIERRA (object);
+
+    g_free (self->priv->cached_pin);
+
+    G_OBJECT_CLASS (mm_sim_sierra_parent_class)->finalize (object);
 }
 
 static void
 mm_sim_sierra_class_init (MMSimSierraClass *klass)
 {
+    GObjectClass *object_class = G_OBJECT_CLASS (klass);
     MMSimClass *sim_class = MM_SIM_CLASS (klass);
+
+    g_type_class_add_private (object_class, sizeof (MMSimSierraPrivate));
+
+    object_class->finalize = finalize;
 
     sim_class->load_sim_identifier = load_sim_identifier;
     sim_class->load_sim_identifier_finish = load_sim_identifier_finish;
+    sim_class->send_pin = send_pin;
+    sim_class->send_pin_finish = send_pin_finish;
 }

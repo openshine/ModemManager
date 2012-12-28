@@ -32,12 +32,99 @@ mm_common_sierra_modem_power_up_finish (MMIfaceModem *self,
     return !g_simple_async_result_propagate_error (G_SIMPLE_ASYNC_RESULT (res), error);
 }
 
-static gboolean
-sierra_power_up_wait_cb (GSimpleAsyncResult *result)
+static void
+send_pin_ready (MMSim *sim,
+                GAsyncResult *res,
+                GSimpleAsyncResult *simple)
 {
-    g_simple_async_result_set_op_res_gboolean (result, TRUE);
-    g_simple_async_result_complete (result);
-    g_object_unref (result);
+    GError *error = NULL;
+
+    if (!MM_SIM_GET_CLASS (sim)->send_pin_finish (sim, res, &error)) {
+        mm_warn ("Error sending cached SIM PIN after power-up: '%s'", error->message);
+
+        /* If the error is because PIN wasn't found, we need to fully reset the
+         * modem and re-start the state machine from the beginning, so that we
+         * ask the user for the PIN while in locked state. */
+        if (g_error_matches (error,
+                             MM_CORE_ERROR,
+                             MM_CORE_ERROR_NOT_FOUND)) {
+            MMBroadbandModem *self = NULL;
+
+            self = MM_BROADBAND_MODEM (g_async_result_get_source_object (G_ASYNC_RESULT (simple)));
+            /* Launch modem reset... if possible */
+            if (MM_IFACE_MODEM_GET_INTERFACE (MM_IFACE_MODEM (self))->reset &&
+                MM_IFACE_MODEM_GET_INTERFACE (MM_IFACE_MODEM (self))->reset_finish) {
+                mm_warn ("Launching modem reset...");
+                MM_IFACE_MODEM_GET_INTERFACE (MM_IFACE_MODEM (self))->reset (MM_IFACE_MODEM (self), NULL, NULL);
+            }
+            g_object_unref (self);
+        }
+
+        g_simple_async_result_take_error (simple, error);
+    } else {
+        mm_dbg ("Assuming we got unlocked after power-up");
+        /* Assume we're done */
+        g_simple_async_result_set_op_res_gboolean (simple, TRUE);
+    }
+
+    g_simple_async_result_complete (simple);
+    g_object_unref (simple);
+}
+
+static void
+unlock_check_ready (MMIfaceModem *self,
+                    GAsyncResult *res,
+                    GSimpleAsyncResult *simple)
+{
+    MMModemLock lock;
+    GError *error = NULL;
+
+    lock = MM_IFACE_MODEM_GET_INTERFACE (self)->load_unlock_required_finish (self, res, &error);
+    if (error) {
+        mm_dbg ("Couldn't check lock status after power up: '%s'", error->message);
+        g_error_free (error);
+    } else if (lock == MM_MODEM_LOCK_SIM_PIN) {
+        MMSim *sim = NULL;
+
+        /* If we need SIM PIN unlocking, re-send the cached one */
+        g_object_get (self,
+                      MM_IFACE_MODEM_SIM, &sim,
+                      NULL);
+        if (sim) {
+            mm_dbg ("Sending cached SIM PIN...");
+            /* On the Sierra-specific SIM implementation, we do allow passing a
+             * NULL pin. It just means 'try to use the last cached one'.
+             * NOTE: do not call mm_sim_send_pin(), as that may ignore the errors. */
+            MM_SIM_GET_CLASS (sim)->send_pin (sim,
+                                              NULL,
+                                              (GAsyncReadyCallback)send_pin_ready,
+                                              simple);
+            g_object_unref (sim);
+            return;
+        }
+        mm_dbg ("No SIM found, assuming we won't need re-unlock");
+    } else
+        mm_info ("Modem is locked with '%s' after power-up", mm_modem_lock_get_string (lock));
+
+    /* On error, or READY, or other lock, or no SIM, just go on */
+    g_simple_async_result_set_op_res_gboolean (simple, TRUE);
+    g_simple_async_result_complete (simple);
+    g_object_unref (simple);
+}
+
+static gboolean
+sierra_power_up_wait_cb (GSimpleAsyncResult *simple)
+{
+    MMBroadbandModem *self;
+
+    self = MM_BROADBAND_MODEM (g_async_result_get_source_object (G_ASYNC_RESULT (simple)));
+
+    /* Some modems may actually need to unlock the SIM PIN again after powering up...
+     * We'll call the Modem inteface method of the modem directly */
+    MM_IFACE_MODEM_GET_INTERFACE (MM_IFACE_MODEM (self))->load_unlock_required (MM_IFACE_MODEM (self),
+                                                                                (GAsyncReadyCallback)unlock_check_ready,
+                                                                                simple);
+    g_object_unref (self);
     return FALSE;
 }
 

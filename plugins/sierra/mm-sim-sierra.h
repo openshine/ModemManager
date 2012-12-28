@@ -32,9 +32,11 @@
 
 typedef struct _MMSimSierra MMSimSierra;
 typedef struct _MMSimSierraClass MMSimSierraClass;
+typedef struct _MMSimSierraPrivate MMSimSierraPrivate;
 
 struct _MMSimSierra {
     MMSim parent;
+    MMSimSierraPrivate *priv;
 };
 
 struct _MMSimSierraClass {
